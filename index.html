@@ -4,6 +4,16 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Production Report</title>
+  <!--
+    COMMENTED VERSION
+    This file is a single-page web app (no server) used to:
+    - Load KMZ/KML points
+    - Display them on a Leaflet map
+    - Let operators edit point status/comment
+    - Keep operator metadata (date/team/vibro/etc.)
+    - Export a CSV (operator summary)
+    - Import a CSV (to restore edits)
+  -->
   <style>
     :root{ --bg:#0b1020; --panel:#10172a; --muted:#9db2df; --accent:#34d399; --accent2:#22d3ee; --border:#1f2a4d; --text:#e6efff; }
     html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
@@ -76,13 +86,6 @@
     <h1>Production Report</h1>
     <div class="pill">Points: <span id="count">0</span></div>
   </header>
-  <div id="inappBanner" class="inapp-banner">
-    <b>No map?</b> You may be viewing this inside an in‑app browser (e.g., WhatsApp/Instagram) that blocks map libraries.
-    <div style="margin-top:6px">
-      <b>iPhone/iPad:</b> Save to <b>Files</b> → open the <b>Files</b> app → long‑press the file → <b>Share</b> → <b>More…</b> → choose <b>Open in Chrome</b>.<br/>
-      <b>Android:</b> Save → open the <b>Files</b> app → <b>Downloads</b> → tap the file → choose <b>Chrome</b>.
-    </div>
-  </div>
   <div class="main">
     <aside class="panel">
       <div class="sec">
@@ -92,7 +95,6 @@
             <label>Drop your <b>.kmz</b> or <b>.kml</b> here (or use the button)</label>
             <input id="fileInput" type="file" accept=".kmz,.kml" />
             <div class="hint">Fields <code>line</code> / <code>point</code> are read from <i>ExtendedData</i> (line, point, etc.) or parsed from the <i>name</i> (e.g., <code>L12-P034</code>).
-            <div class="hint" style="margin-top:10px">Coordinates are auto-detected. If your KMZ contains projected meters instead of lon/lat, the app will infer the most likely projection automatically.</div>
 </div>
             <div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">
               <button id="fitBtn" class="ghost">Zoom to extent</button>
@@ -102,9 +104,9 @@
         </div>
       </div>
       <div class="sec">
-        <h3>INFO & EDIT</h3>
+        <h3>Prod Info</h3>
         <div class="col">
-          <label>Default date</label>
+          <label>Date</label>
           <input id="dateInput" type="date" />
 
           <div class="row" style="gap:8px">
@@ -114,7 +116,7 @@
             </div>
             <div class="col" style="flex:1">
               <label>Vibro Number</label>
-              <input id="vibroInput" type="text" placeholder="e.g., V01" />
+              <input id="vibroInput" type="text" placeholder="ex:01" />
             </div>
           </div>
           <div class="row" style="gap:8px">
@@ -130,11 +132,11 @@
           <div class="row" style="gap:8px">
             <div class="col" style="flex:1">
               <label>First Point</label>
-              <input id="firstPointInput" type="text" placeholder="e.g., 001" />
+              <input id="firstPointInput" type="text" placeholder="First Point" />
             </div>
             <div class="col" style="flex:1">
               <label>Last Point</label>
-              <input id="lastPointInput" type="text" placeholder="e.g., 500" />
+              <input id="lastPointInput" type="text" placeholder="Last Point" />
             </div>
           </div>
 
@@ -151,16 +153,12 @@
           <select id="selReason" disabled></select>
 
           <button id="applyEdit" class="primary">Apply changes</button>
-          <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">
-            <button id="prevBtn" class="ghost" title="Previous point on same line">◀ Prev</button>
-            <button id="nextBtn" class="ghost" title="Next point on same line">Next ▶</button>
-          </div>
 
         </div>
       </div>
 
       <div class="sec">
-        <h3>PHASE LOG (manual)</h3>
+        <h3>OBS LOG </h3>
         <div class="phase-header" style="margin-bottom:6px">
           <div>START</div><div>END</div><div>DESCRIPTION</div><div>Duration</div><div></div>
         </div>
@@ -169,7 +167,6 @@
           <button id="addPhase" class="primary">Add row</button>
           <button id="clearPhase" class="ghost">Clear all</button>
         </div>
-        <div class="hint" style="margin-top:6px">Tip: tap the ▼ on mobile time inputs to pick quickly. Use the ↑ button to copy the previous END into START.</div>
       </div>
 
       <div class="sec">
@@ -182,7 +179,7 @@
           </div>
           <div class="col" style="flex:1;min-width:140px">
             <label>Search (station or line-point / comment)</label>
-            <input id="searchFilter" type="text" placeholder="e.g., L12-P034 or 'gate'"/>
+            <input id="searchFilter" type="text" />
           </div>
         </div>
         <label class="switch"><input id="showEditedOnly" type="checkbox" /> Show edited only</label>
@@ -197,7 +194,7 @@
       <div class="sec">
         <h3>EXPORT</h3>
         <div class="row" style="gap:8px;flex-wrap:wrap">
-          <button id="downloadBtn" class="ghost" disabled>Download CSV</button>
+          <button id="downloadBtn" class="ghost" >Download CSV</button>
           <button id="importBtn" class="ghost">Import CSV</button>
         </div>
         <input id="importInput" type="file" accept=".csv,text/csv" style="display:none" />
@@ -241,6 +238,22 @@
 
   <script>
     // ===== Helpers & state =====
+    /*
+      GLOBAL HELPERS
+      - $(): tiny querySelector shortcut
+      - showToast(): small UI message popup
+      - todayISO(): local date (YYYY-MM-DD) used as default
+
+      PERSISTENCE (localStorage)
+      - STORAGE_KEY: where autosave is stored
+      - scheduleSave()/saveStateNow(): debounce saves so typing doesn't spam storage
+      - loadSavedState()/clearSavedState(): restore or wipe autosave
+
+      IMPORTANT DATA MODEL
+      - state.points: array of point objects built from KMZ/KML
+      - Each point has: id, uid, line, point, station, lat/lng, comment, skip, jump, skipReason, edited
+      - uid is what lets imports/autosave match edits back onto the same logical point
+    */
     const $ = (s)=>document.querySelector(s);
     const showToast = (msg)=>{ const t=$('#toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none', 6000); };
     const todayISO = ()=>{const d=new Date(); const o=d.getTimezoneOffset(); const d2=new Date(d.getTime()-o*60000); return d2.toISOString().slice(0,10)};
@@ -308,6 +321,14 @@
     const state = { points: [], selectedId: null, map:null, groupLayer:null, labelsOn:true, linesOn:true, showNormal:true, showJump:true, showSkip:true, phaseLog: [], hasFit:false, filterLine:"", searchText:"", editedOnly:false, pendingImport:null };
 
     // ===== Phase helpers =====
+    /*
+      PHASE LOG
+      Manual table where operator logs time ranges (START/END) + a reason.
+      - renderPhaseTable(): draws the table rows
+      - addPhaseRow()/deletePhase(): mutate state.phaseLog
+      - updatePhaseFromInputs(): reads current inputs into state
+      - formatPhaseDuration(): computes duration, supports crossing midnight
+    */
     function renderPhaseTable(){
       const host = $('#phaseTable'); if(!host) return;
       host.innerHTML = state.phaseLog.map((row, i)=>{
@@ -332,6 +353,12 @@
     function formatPhaseDuration(start,end){ const a=parseHM(start), b=parseHM(end); if(a==null || b==null) return '0:00'; let d=b-a; if(d<0) d+=24*60; const h=Math.floor(d/60), m=d%60; return `${h}:${String(m).padStart(2,'0')}`; }
 
     // ===== Map init =====
+    /*
+      MAP INIT
+      - ensureDeps(): dynamically loads Leaflet/JSZip/toGeoJSON/PapaParse/proj4 from CDN
+      - bootstrap(): called at the end; loads deps then initializes map and restores autosave
+      - initMap(): creates Leaflet map + base layers (Satellite + OSM fallback)
+    */
     async function bootstrap(){
       try{ await ensureDeps(); const ua = navigator.userAgent||''; const inApp=/(WhatsApp|FBAN|FBAV|Instagram|Line\/[0-9]|Twitter|WeChat|Weibo)/i.test(ua); const banner=$('#inappBanner'); if(banner) banner.style.display=inApp?'block':'none'; initMap(); if($('#dateInput') && !$('#dateInput').value) $('#dateInput').value = todayISO(); restoreFromSaved(); scheduleSave(); }
       catch(e){ console.error(e); const banner=$('#inappBanner'); if(banner) banner.style.display='block'; showToast('Map libraries were blocked. Use “Open in Chrome/Safari”.'); }
@@ -346,6 +373,19 @@
     $('#showSkip').addEventListener('change', e=>{ state.showSkip=e.target.checked; render(); });
 
     // ===== Parsing helpers for KMZ/KML =====
+    /*
+      KMZ/KML PARSING
+      - parseLinePointFromName(): attempts to extract Line/Point from a placemark name like 'L12-P034'
+      - getPropCI(): reads feature properties case-insensitively (line/Line/LINE)
+      - normalizeLonLat(): KML is usually lon,lat, but some exports swap order; we auto-fix
+
+      PROJECTION AUTO-FIX
+      Some KMZ/KML export projected meters instead of lon/lat.
+      - inferBestCRS(): tries common CRSs + UTM zones, picks the one that yields valid lon/lat
+      - autoFixAllPoints(): applies the best CRS to all invalid points
+
+      buildPointFromFeature(): converts GeoJSON features into our point objects
+    */
     function parseLinePointFromName(name=''){ const s=String(name); let m=s.match(/\bL(?:ine)?\s*([A-Za-z0-9]+)[^0-9A-Za-z]+P(?:oint|t)?\s*([A-Za-z0-9]+)/i); if(m) return {line:m[1],point:m[2]}; m=s.match(/\bLine\s*([A-Za-z0-9]+).*?Point\s*([A-Za-z0-9]+)/i); if(m) return {line:m[1],point:m[2]}; m=s.match(/\bL\s*([0-9A-Za-z]+)[\-_ ]+P\s*([0-9A-Za-z]+)/i); if(m) return {line:m[1],point:m[2]}; m=s.match(/([A-Za-z0-9]+)[\-_ ]+(\d{1,4})$/); if(m) return {line:m[1],point:m[2]}; return {line:'',point:''}; }
     function getPropCI(props,names){ if(!props) return undefined; const keys=Object.keys(props); for(const n of names){ const k=keys.find(k=>k.toLowerCase()===String(n).toLowerCase()); if(k) return props[k]; } }
     function normalizeLonLat(lon,lat){
@@ -741,7 +781,18 @@ for(const [,arr] of m){ arr.sort((a,b)=>(parseInt(a.point)||0)-(parseInt(b.point
       setTimeout(doIt, 300);
     }
 
-function render(){ state.groupLayer.clearLayers(); const markers=state.points.filter(visibleByFilter).map(p=>{ const m=L.circleMarker([p.lat,p.lng],markerStyle(p)); if(state.labelsOn){ m.bindTooltip(displayKey(p), {permanent:false,direction:'top',opacity:0.9,sticky:true}); } m.on('click',()=>{ selectPoint(p.id); }); return m; }); markers.forEach(m=>m.addTo(state.groupLayer)); if(state.linesOn){ const byLine=groupByLine(); byLine.forEach(arr=>{ const seq=arr.filter(visibleByFilter); if(seq.length<2) return; const latlngs=seq.map(p=>[p.lat,p.lng]); L.polyline(latlngs,{color:'#22d3ee',weight:2,opacity:0.8}).addTo(state.groupLayer); }); } if(markers.length){ const g=L.featureGroup(markers); if(!state.hasFit){ state.map.fitBounds(g.getBounds().pad(0.2)); state.hasFit=true; } } updateCount(); }
+/*
+      RENDERING
+      render() redraws everything (markers + optional polylines) from current state:
+      - status filters (Normal/Jump/Skip)
+      - edited-only filter
+      - line filter
+      - search filter
+      - labels toggle
+      - lines toggle
+      It clears the layer group and rebuilds it.
+    */
+    function render(){ state.groupLayer.clearLayers(); const markers=state.points.filter(visibleByFilter).map(p=>{ const m=L.circleMarker([p.lat,p.lng],markerStyle(p)); if(state.labelsOn){ m.bindTooltip(displayKey(p), {permanent:false,direction:'top',opacity:0.9,sticky:true}); } m.on('click',()=>{ selectPoint(p.id); }); return m; }); markers.forEach(m=>m.addTo(state.groupLayer)); if(state.linesOn){ const byLine=groupByLine(); byLine.forEach(arr=>{ const seq=arr.filter(visibleByFilter); if(seq.length<2) return; const latlngs=seq.map(p=>[p.lat,p.lng]); L.polyline(latlngs,{color:'#22d3ee',weight:2,opacity:0.8}).addTo(state.groupLayer); }); } if(markers.length){ const g=L.featureGroup(markers); if(!state.hasFit){ state.map.fitBounds(g.getBounds().pad(0.2)); state.hasFit=true; } } updateCount(); }
 
     function selectPoint(id){
       state.selectedId=id;
@@ -794,6 +845,19 @@ function render(){ state.groupLayer.clearLayers(); const markers=state.points.fi
     }
 
     // ===== KML/KMZ loading =====
+    /*
+      FILE LOADING PIPELINE
+      handleFile(file): detects .kml vs .kmz
+      - For .kml: read text directly
+      - For .kmz: unzip with JSZip, find the first .kml/doc.kml, then parse
+
+      loadKMLString(kmlText):
+      - converts KML to GeoJSON via toGeoJSON.kml
+      - builds points via buildPointFromFeature
+      - auto-fixes projection if needed
+      - drops invalid points
+      - stores into state.points and triggers render
+    */
     async function loadKMLString(kmlText){ try{ const dom=new DOMParser().parseFromString(kmlText,'text/xml'); const gj=toGeoJSON.kml(dom); const feats=(gj&&gj.features)?gj.features:[]; const pts=[]; for(let i=0;i<feats.length;i++){ const f=feats[i]; const built=await buildPointFromFeature(f,i); if(Array.isArray(built)) built.forEach(b=>b&&pts.push(b)); else if(built) pts.push(built);} await autoFixAllPoints(pts); for(let i=pts.length-1;i>=0;i--){ const p=pts[i]; if(!p || !isValidLonLat(p.lng,p.lat)){ pts.splice(i,1); } } if(!pts.length){ showToast('0 points found. Make sure the KMZ contains <Placemark> with <Point>.'); return; } state.points=pts; state.hasFit=false; refreshLineFilter(); $('#downloadBtn').disabled=false; // restore edits
         // restoreFromSaved() already called on page load; keep for compatibility
         restoreFromSaved();
@@ -820,15 +884,97 @@ function render(){ state.groupLayer.clearLayers(); const markers=state.points.fi
         } catch(e){ console.error(e); if(!(state.points&&state.points.length)) showToast('KML/KMZ parsing error'); } finally { if(state.points&&state.points.length){ safeRender(); scheduleSave(); } } }
     async function handleFile(file){ if(!file) return; const name=file.name.toLowerCase(); if(name.endsWith('.kml')){ const text=await file.text(); await loadKMLString(text); return; } if(name.endsWith('.kmz')){ try{ const zip=await JSZip.loadAsync(file); let kmlFile=zip.file(/doc\.kml$/i)[0] || zip.file(/\.kml$/i)[0]; if(!kmlFile){ showToast('Invalid KMZ: no KML found.'); return; } const kmlText=await kmlFile.async('string'); await loadKMLString(kmlText); } catch(e){ console.error(e); showToast('KMZ reading error'); } return; } showToast('Unsupported format. Use .kmz or .kml'); }
 
-    // ===== Export (metadata + points + phase log) =====
-    function downloadCSV(){ if(!state.points.length){ showToast('No points.'); return; } const dateVal=$('#dateInput').value||''; const team=$('#teamInput').value||''; const vibro=$('#vibroInput').value||''; const startP=$('#startProdInput').value||''; const endP=$('#endProdInput').value||''; const first=$('#firstPointInput').value||''; const last=$('#lastPointInput').value||''; const metaHeader=['date','team','vibro_number','start_prod','end_prod','first_point','last_point']; const metaRow=[dateVal,team,vibro,startP,endP,first,last]; const metaCsv=Papa.unparse([metaHeader,metaRow]); const rows=state.points.map(p=>({station:p.station||'',line:p.line||'',point:p.point||'',x:p.x,y:p.y,comment:p.comment||'',skip:p.skip?1:0,jump:p.jump?1:0,skip_reason:p.skipReason||''})); const pointsCsv=Papa.unparse(rows);
-      // phase log
-      const phaseRows = state.phaseLog.filter(r=>parseHM(r.start)!=null && parseHM(r.end)!=null).map(r=>({ 'START': r.start, 'END': r.end, 'Duration (calculation)': formatPhaseDuration(r.start,r.end), 'DESCRIPTION': r.reason }));
-      const phaseCsv = phaseRows.length ? Papa.unparse(phaseRows) : '';
-      const combined = metaCsv + '\n\n' + pointsCsv + (phaseCsv ? '\n\n' + phaseCsv : ''); const blob=new Blob([combined],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='production_report.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000); }
+// ===== Export (metadata + points + phase log) =====
+function downloadCSV(){
+  // (A) Safety: need a loaded dataset to export point rows
+  if(!state.points || !state.points.length){
+    showToast('No points.');
+    return;
+  }
 
-    
+  // (B) META (operator inputs)
+  const meta = getMeta();
+  const metaHeader = ['date','team','vibro_number','start_prod','end_prod','first_point','last_point'];
+  const metaRow = [
+    meta.date || '',
+    meta.team || '',
+    meta.vibro_number || '',
+    meta.start_prod || '',
+    meta.end_prod || '',
+    meta.first_point || '',
+    meta.last_point || ''
+  ];
+  const metaCsv = Papa.unparse([metaHeader, metaRow]);
+
+  // (C) POINTS: export as "station" OR "line/point" depending on what exists in the KMZ
+  const hasLinePoint = state.points.some(p => String(p.line||'').trim() && String(p.point||'').trim());
+  const hasStation   = state.points.some(p => String(p.station||'').trim());
+  const mode = hasLinePoint ? 'linepoint' : (hasStation ? 'station' : 'linepoint');
+
+  let pointRows;
+  if(mode === 'station'){
+    pointRows = state.points.map(p => ({
+      station: String(p.station||'').trim(),
+      x: p.x,
+      y: p.y,
+      comment: p.comment || '',
+      skip: p.skip ? 1 : 0,
+      jump: p.jump ? 1 : 0,
+      skip_reason: p.skipReason || ''
+    }));
+  } else {
+    pointRows = state.points.map(p => ({
+      line: String(p.line||'').trim(),
+      point: String(p.point||'').trim(),
+      x: p.x,
+      y: p.y,
+      comment: p.comment || '',
+      skip: p.skip ? 1 : 0,
+      jump: p.jump ? 1 : 0,
+      skip_reason: p.skipReason || ''
+    }));
+  }
+
+  const pointsCsv = Papa.unparse(pointRows);
+
+  // (D) PHASE LOG (optional block)
+  const phaseRows = (state.phaseLog || [])
+    .filter(r => parseHM(r.start)!=null && parseHM(r.end)!=null)
+    .map(r => ({
+      'START': r.start,
+      'END': r.end,
+      'Duration (calculation)': formatPhaseDuration(r.start, r.end),
+      'DESCRIPTION': r.reason
+    }));
+  const phaseCsv = phaseRows.length ? Papa.unparse(phaseRows) : '';
+
+  // (E) Combine blocks (meta + blank line + points + optional blank line + phase)
+  const combined = metaCsv + '\n\n' + pointsCsv + (phaseCsv ? '\n\n' + phaseCsv : '');
+
+  // (F) Download as a file
+  const blob = new Blob([combined], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'production_report.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+}
+
+
     // ===== Import CSV (metadata + point edits + phase log) =====
+    /*
+      IMPORT CSV
+      The import expects the 'combined export' format (meta block + points + phase log).
+      - splitCsvBlocks(): splits on blank lines
+      - handleImportText(): detects which block is which by headers
+      - If points aren't loaded yet, it stores pendingImport and applies after KMZ/KML load.
+
+      Even if you only use the simplified export, keeping import may still help you
+      restore edits from older exports.
+    */
     function splitCsvBlocks(text){
       const cleaned = String(text||'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
       // Keep blocks separated by one or more blank lines
@@ -910,14 +1056,17 @@ function render(){ state.groupLayer.clearLayers(); const markers=state.points.fi
     $('#searchFilter').addEventListener('input',(e)=>{ state.searchText = e.target.value||''; safeRender(); scheduleSave(); });
     $('#showEditedOnly').addEventListener('change',(e)=>{ state.editedOnly = e.target.checked; safeRender(); scheduleSave(); });
 
-    // Prev/Next navigation
-    $('#prevBtn').addEventListener('click', ()=>goPrevNext(-1));
-    $('#nextBtn').addEventListener('click', ()=>goPrevNext(1));
 
     // Import
     $('#importBtn').addEventListener('click', ()=>$('#importInput').click());
     $('#importInput').addEventListener('change', async (e)=>{ const f=e.target.files[0]; if(!f) return; const txt=await f.text(); handleImportText(txt); e.target.value=''; });
 
+    /*
+      AUTOSAVE
+      Any change in the operator metadata fields triggers scheduleSave(), which
+      debounces and writes to localStorage. This allows the operator to close/reopen
+      and keep their edits.
+    */
     // Autosave on meta changes
     ['dateInput','teamInput','vibroInput','startProdInput','endProdInput','firstPointInput','lastPointInput'].forEach(id=>{
       const el = document.getElementById(id);
