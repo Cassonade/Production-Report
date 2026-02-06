@@ -1,6 +1,9 @@
-/* Production Report PWA Service Worker */
-const CACHE_VERSION = 'prodreport-v1';
-const CORE_ASSETS = [
+/* Production Report Service Worker
+   - Caches the app shell for offline use
+   - Does NOT cache map tiles (they're huge)
+*/
+const CACHE_NAME = 'prod-report-20260206181436';
+const APP_SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
@@ -9,58 +12,42 @@ const CORE_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_VERSION).then((cache) => cache.addAll(CORE_ASSETS))
-      .then(() => self.skipWaiting())
-  );
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) => Promise.all(
-      keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k))
-    )).then(() => self.clients.claim())
-  );
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : Promise.resolve())));
+    await self.clients.claim();
+  })());
 });
-
-// Cache strategy helpers
-async function cacheFirst(request) {
-  const cache = await caches.open(CACHE_VERSION);
-  const cached = await cache.match(request, { ignoreSearch: true });
-  if (cached) return cached;
-  const fresh = await fetch(request);
-  // Cache opaque responses too (CDN/tiles often return opaque in SW)
-  cache.put(request, fresh.clone());
-  return fresh;
-}
-
-async function networkFirst(request) {
-  const cache = await caches.open(CACHE_VERSION);
-  try {
-    const fresh = await fetch(request);
-    cache.put(request, fresh.clone());
-    return fresh;
-  } catch (e) {
-    const cached = await cache.match(request, { ignoreSearch: true });
-    if (cached) return cached;
-    throw e;
-  }
-}
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
 
-  // Only handle GET
   if (req.method !== 'GET') return;
+  if (url.origin !== self.location.origin) return; // only same-origin
 
-  // Same-origin: prefer cache-first for app shell
-  if (url.origin === self.location.origin) {
-    event.respondWith(cacheFirst(req));
-    return;
-  }
+  event.respondWith((async () => {
+    const cached = await caches.match(req);
+    if (cached) return cached;
 
-  // Third-party libs + tiles: network-first (keeps updates) with cache fallback
-  // This also enables offline viewing of already-seen map areas.
-  event.respondWith(networkFirst(req));
+    try {
+      const fresh = await fetch(req);
+      const cache = await caches.open(CACHE_NAME);
+      if (fresh && fresh.status === 200 && fresh.type === 'basic') {
+        cache.put(req, fresh.clone());
+      }
+      return fresh;
+    } catch (e) {
+      if (req.mode === 'navigate') {
+        const fallback = await caches.match('./index.html');
+        if (fallback) return fallback;
+      }
+      throw e;
+    }
+  })());
 });
