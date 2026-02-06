@@ -1,0 +1,953 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Production Report</title>
+  <style>
+    :root{ --bg:#0b1020; --panel:#10172a; --muted:#9db2df; --accent:#34d399; --accent2:#22d3ee; --border:#1f2a4d; --text:#e6efff; }
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:linear-gradient(180deg,#0c1430,rgba(12,20,48,.6));border-bottom:1px solid var(--border)}
+    header h1{font-size:16px;margin:0;font-weight:700}
+    .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;background:#0e1630;border:1px solid var(--border);border-radius:999px;color:#b9c7ea;font-size:12px}
+
+    .main{display:grid;grid-template-columns:380px 1fr;gap:10px;height:calc(100vh - 56px)}
+    .panel{min-width:0;min-height:0;height:100%;overflow:auto;background:var(--panel);border-right:1px solid var(--border);padding:14px}
+    main{position:relative;min-height:0}
+    #map{position:absolute;inset:0}
+
+    .sec{border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:12px;background:rgba(14,22,48,.5)}
+    .sec h3{margin:0 0 8px 0;font-size:13px;color:var(--muted);letter-spacing:.3px}
+    .row{display:flex;gap:8px;align-items:center}
+    .col{display:flex;flex-direction:column;gap:8px}
+    label{font-size:12px;color:var(--muted)}
+    input[type="text"], input[type="date"], input[type="time"], select, textarea, button{background:#0e1630;border:1px solid var(--border);color:#e6efff;border-radius:12px;padding:9px 10px;outline:none}
+    select{height:38px}
+    textarea{min-height:90px;resize:vertical}
+    button{cursor:pointer;font-weight:700}
+    button.primary{background:linear-gradient(180deg,#0ea5e9,#6366f1);border:none}
+    button.ghost{background:#0e1630}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .drop{border:1px dashed #2a3a73;border-radius:14px;padding:12px;background:#0b132c}
+    .hint{font-size:12px;color:#8aa0cf}
+
+    .footerbar{position:absolute;bottom:12px;left:12px;z-index:500;background:rgba(10,16,36,.92);backdrop-filter:blur(6px);border:1px solid var(--border);padding:10px 12px;border-radius:12px;color:#b8c3e6;font-size:12px}
+    .legend{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+    .legend .item{display:inline-flex;align-items:center;gap:6px}
+    .legend .dot{width:10px;height:10px;border-radius:999px;background:#60a5fa;box-shadow:0 0 0 2px rgba(96,165,250,.3)}
+
+    .switch{display:flex;align-items:center;gap:8px}
+    .toast{position:absolute;right:12px;bottom:12px;z-index:600;background:#0b132c;border:1px solid var(--border);padding:10px 12px;border-radius:10px;font-size:12px;color:#c6d4ff;display:none}
+
+    /* phase log table */
+    .phase-header, .phase-row{display:grid;grid-template-columns:110px 110px 1fr 90px 36px;gap:8px;align-items:center}
+    .phase-header{font-size:11px;color:#9db2df;opacity:.9}
+    .phase-row .del{background:#1a244d;border:1px solid #223269;border-radius:10px;height:36px;width:36px}
+
+    /* Mobile layout */
+    @media (max-width: 900px){
+      .main{grid-template-columns:1fr; grid-template-rows: 48vh 1fr}
+      .panel{height:100%}
+      .phase-header, .phase-row{grid-template-columns:1fr 1fr 1fr 80px 36px}
+    }
+    .inapp-banner{display:none;margin:10px 14px 0 14px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:#0b132c;color:#cdd8ff;font-size:12px}
+    .inapp-banner b{color:#fff}
+  </style>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0b1020">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <script>
+    // Register Service Worker for offline support
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    }
+  </script>
+
+</head>
+<body>
+  <header>
+    <h1>Production Report</h1>
+    <div class="pill">Points: <span id="count">0</span></div>
+  </header>
+  <div id="inappBanner" class="inapp-banner">
+    <b>No map?</b> You may be viewing this inside an in‑app browser (e.g., WhatsApp/Instagram) that blocks map libraries.
+    <div style="margin-top:6px">
+      <b>iPhone/iPad:</b> Save to <b>Files</b> → open the <b>Files</b> app → long‑press the file → <b>Share</b> → <b>More…</b> → choose <b>Open in Chrome</b>.<br/>
+      <b>Android:</b> Save → open the <b>Files</b> app → <b>Downloads</b> → tap the file → choose <b>Chrome</b>.
+    </div>
+  </div>
+  <div class="main">
+    <aside class="panel">
+      <div class="sec">
+        <h3>DATA</h3>
+        <div class="drop" id="drop">
+          <div class="col">
+            <label>Drop your <b>.kmz</b> or <b>.kml</b> here (or use the button)</label>
+            <input id="fileInput" type="file" accept=".kmz,.kml" />
+            <div class="hint">Fields <code>line</code> / <code>point</code> are read from <i>ExtendedData</i> (line, point, etc.) or parsed from the <i>name</i> (e.g., <code>L12-P034</code>).
+            <div class="hint" style="margin-top:10px">Coordinates are auto-detected. If your KMZ contains projected meters instead of lon/lat, the app will infer the most likely projection automatically.</div>
+</div>
+            <div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">
+              <button id="fitBtn" class="ghost">Zoom to extent</button>
+              <button id="clearBtn" class="ghost">Clear</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="sec">
+        <h3>INFO & EDIT</h3>
+        <div class="col">
+          <label>Default date</label>
+          <input id="dateInput" type="date" />
+
+          <div class="row" style="gap:8px">
+            <div class="col" style="flex:1">
+              <label>Team</label>
+              <input id="teamInput" type="text" placeholder="team" />
+            </div>
+            <div class="col" style="flex:1">
+              <label>Vibro Number</label>
+              <input id="vibroInput" type="text" placeholder="e.g., V01" />
+            </div>
+          </div>
+          <div class="row" style="gap:8px">
+            <div class="col" style="flex:1">
+              <label>Start Prod</label>
+              <input id="startProdInput" type="time" step="60" />
+            </div>
+            <div class="col" style="flex:1">
+              <label>End Prod</label>
+              <input id="endProdInput" type="time" step="60" />
+            </div>
+          </div>
+          <div class="row" style="gap:8px">
+            <div class="col" style="flex:1">
+              <label>First Point</label>
+              <input id="firstPointInput" type="text" placeholder="e.g., 001" />
+            </div>
+            <div class="col" style="flex:1">
+              <label>Last Point</label>
+              <input id="lastPointInput" type="text" placeholder="e.g., 500" />
+            </div>
+          </div>
+
+          <label style="margin-top:6px">Selected point</label>
+          <input id="selInfo" type="text" disabled placeholder="—" />
+
+          <label>Comment</label>
+          <textarea id="selComment" placeholder="Your comment..."></textarea>
+
+          <div class="switch"><input id="selSkip" type="checkbox"/> <label for="selSkip">Skip this point</label></div>
+          <div class="switch"><input id="selJump" type="checkbox"/> <label for="selJump">Jump</label></div>
+
+          <label>Skip reason</label>
+          <select id="selReason" disabled></select>
+
+          <button id="applyEdit" class="primary">Apply changes</button>
+          <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">
+            <button id="prevBtn" class="ghost" title="Previous point on same line">◀ Prev</button>
+            <button id="nextBtn" class="ghost" title="Next point on same line">Next ▶</button>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="sec">
+        <h3>PHASE LOG (manual)</h3>
+        <div class="phase-header" style="margin-bottom:6px">
+          <div>START</div><div>END</div><div>DESCRIPTION</div><div>Duration</div><div></div>
+        </div>
+        <div id="phaseTable"></div>
+        <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button id="addPhase" class="primary">Add row</button>
+          <button id="clearPhase" class="ghost">Clear all</button>
+        </div>
+        <div class="hint" style="margin-top:6px">Tip: tap the ▼ on mobile time inputs to pick quickly. Use the ↑ button to copy the previous END into START.</div>
+      </div>
+
+      <div class="sec">
+        <h3>DISPLAY</h3>
+        
+        <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <div class="col" style="flex:1;min-width:140px">
+            <label>Filter by line</label>
+            <select id="lineFilter"><option value="">— all —</option></select>
+          </div>
+          <div class="col" style="flex:1;min-width:140px">
+            <label>Search (station or line-point / comment)</label>
+            <input id="searchFilter" type="text" placeholder="e.g., L12-P034 or 'gate'"/>
+          </div>
+        </div>
+        <label class="switch"><input id="showEditedOnly" type="checkbox" /> Show edited only</label>
+<label class="switch"><input id="toggleLabels" type="checkbox" checked /> Show labels (station / line-point)</label>
+        <label class="switch"><input id="toggleLines" type="checkbox" checked /> Connect points by line</label>
+        <div class="row" style="gap:14px;flex-wrap:wrap;margin-top:8px">
+          <label class="switch"><input id="showNormal" type="checkbox" checked /> Show Normal</label>
+          <label class="switch"><input id="showJump" type="checkbox" checked /> Show Jump</label>
+          <label class="switch"><input id="showSkip" type="checkbox" checked /> Show Skip</label>
+        </div>
+      </div>
+      <div class="sec">
+        <h3>EXPORT</h3>
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <button id="downloadBtn" class="ghost" disabled>Download CSV</button>
+          <button id="importBtn" class="ghost">Import CSV</button>
+        </div>
+        <input id="importInput" type="file" accept=".csv,text/csv" style="display:none" />
+        <div class="hint" style="margin-top:6px">CSV order: metadata, points, then phase log (manual).</div>
+      </div>
+    </aside>
+    <main>
+      <div id="map"></div>
+      <div class="footerbar">
+        <div class="legend">
+          <div class="item"><span class="dot" style="background:#60a5fa"></span> <span>Normal</span></div>
+          <div class="item"><span class="dot" style="background:#facc15"></span> <span>Jump</span></div>
+          <div class="item"><span class="dot" style="background:#ef4444"></span> <span>Skip</span></div>
+          <span style="opacity:.8">· Tap a point to edit</span>
+        </div>
+      </div>
+      <div id="toast" class="toast"></div>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tmcw/togeojson@5.4.0/dist/togeojson.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/proj4@2.9.2/dist/proj4.js"></script>
+
+  <script>
+    const CDN = {
+      leaflet: { css: ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'], js: ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'] },
+      jszip: { js: ['https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js'] },
+      togeojson: { js: ['https://cdn.jsdelivr.net/npm/@tmcw/togeojson@5.4.0/dist/togeojson.umd.js'] },
+      papaparse: { js: ['https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js'] },
+      proj4: { js: ['https://cdn.jsdelivr.net/npm/proj4@2.9.2/dist/proj4.js'] }
+    };
+    async function ensureDeps(){ if(!window.L){ const l=document.createElement('link'); l.rel='stylesheet'; l.href=CDN.leaflet.css[0]; document.head.appendChild(l); const s=document.createElement('script'); s.src=CDN.leaflet.js[0]; document.head.appendChild(s); await new Promise(r=>s.onload=r); }
+      if(!window.JSZip){ const s=document.createElement('script'); s.src=CDN.jszip.js[0]; document.head.appendChild(s); await new Promise(r=>s.onload=r); }
+      if(!window.toGeoJSON){ const s=document.createElement('script'); s.src=CDN.togeojson.js[0]; document.head.appendChild(s); await new Promise(r=>s.onload=r); }
+      if(!window.Papa){ const s=document.createElement('script'); s.src=CDN.papaparse.js[0]; document.head.appendChild(s); await new Promise(r=>s.onload=r); }
+      if(!window.proj4){ const s=document.createElement('script'); s.src=CDN.proj4.js[0]; document.head.appendChild(s); await new Promise(r=>s.onload=r); } }
+  </script>
+
+  <script>
+    // ===== Helpers & state =====
+    const $ = (s)=>document.querySelector(s);
+    const showToast = (msg)=>{ const t=$('#toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none', 6000); };
+    const todayISO = ()=>{const d=new Date(); const o=d.getTimezoneOffset(); const d2=new Date(d.getTime()-o*60000); return d2.toISOString().slice(0,10)};
+
+
+    const STORAGE_KEY = 'prod_report_v6_state';
+    let saveTimer = null;
+    function getMeta(){
+      return {
+        date: $('#dateInput')?.value||'',
+        team: $('#teamInput')?.value||'',
+        vibro_number: $('#vibroInput')?.value||'',
+        start_prod: $('#startProdInput')?.value||'',
+        end_prod: $('#endProdInput')?.value||'',
+        first_point: $('#firstPointInput')?.value||'',
+        last_point: $('#lastPointInput')?.value||''
+      };
+    }
+    function setMeta(meta){
+      if(!meta) return;
+      if($('#dateInput') && meta.date!=null) $('#dateInput').value = meta.date;
+      if($('#teamInput') && meta.team!=null) $('#teamInput').value = meta.team;
+      if($('#vibroInput') && meta.vibro_number!=null) $('#vibroInput').value = meta.vibro_number;
+      if($('#startProdInput') && meta.start_prod!=null) $('#startProdInput').value = meta.start_prod;
+      if($('#endProdInput') && meta.end_prod!=null) $('#endProdInput').value = meta.end_prod;
+      if($('#firstPointInput') && meta.first_point!=null) $('#firstPointInput').value = meta.first_point;
+      if($('#lastPointInput') && meta.last_point!=null) $('#lastPointInput').value = meta.last_point;
+    }
+    function scheduleSave(){
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(saveStateNow, 350);
+    }
+    function saveStateNow(){
+      try{
+        const payload = {
+          v: 1,
+          savedAt: new Date().toISOString(),
+          meta: getMeta(),
+          phaseLog: state.phaseLog||[],
+          pointEdits: (state.points||[]).filter(p=>p && (p.comment||p.skip||p.jump||p.skipReason)).map(p=>({
+            uid: p.uid, comment: p.comment||'', skip: !!p.skip, jump: !!p.jump, skipReason: p.skipReason||''
+          })),
+          filterLine: state.filterLine||'',
+          searchText: state.searchText||'',
+          editedOnly: !!state.editedOnly
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      }catch(e){ /* ignore */ }
+    }
+    function loadSavedState(){
+      try{
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if(!raw) return null;
+        return JSON.parse(raw);
+      }catch(e){ return null; }
+    }
+    function clearSavedState(){
+      try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
+    }
+    const SKIP_REASONS = [ 'PPV','Refusal / Permitting','Difficult access','Fence / Gate / Barrier','Steep slope','Obstacle','Underground utilities','Work site / Construction','Bridge','Railway','Safety','Crazy naked old man in front of the vib' ];
+    const PHASE_REASONS = [ 'ACQUISITION','TECHNICAL / MECA / ELECTRONIC','WEATHER / MÉTÉO','PERMITTING / REL PUBLIQUE','CLIENT REQUEST','DEPLACEMENT / MOVING / OTHER' ];
+
+    function fillSkipReasons(){ const sel = document.querySelector('#selReason'); if(!sel) return; if(!sel.options || sel.options.length <= 1){ sel.innerHTML = '<option value="">— choose —</option>' + SKIP_REASONS.map(r=>`<option>${r}</option>`).join(''); } }
+
+    const state = { points: [], selectedId: null, map:null, groupLayer:null, labelsOn:true, linesOn:true, showNormal:true, showJump:true, showSkip:true, phaseLog: [], hasFit:false, filterLine:"", searchText:"", editedOnly:false, pendingImport:null };
+
+    // ===== Phase helpers =====
+    function renderPhaseTable(){
+      const host = $('#phaseTable'); if(!host) return;
+      host.innerHTML = state.phaseLog.map((row, i)=>{
+        const opts = PHASE_REASONS.map(r=>`<option${row.reason===r?' selected':''}>${r}</option>`).join('');
+        return `<div class="phase-row" data-i="${i}">
+          <input type="time" step="60" id="ph-start-${i}" value="${row.start||''}" />
+          <input type="time" step="60" id="ph-end-${i}" value="${row.end||''}" />
+          <select id="ph-reason-${i}">${opts}</select>
+          <div id="ph-dur-${i}" class="tag">${formatPhaseDuration(row.start,row.end)}</div>
+          <button class="del" title="Delete" onclick="deletePhase(${i})">✕</button>
+        </div>`;
+      }).join('');
+      // attach listeners
+      state.phaseLog.forEach((_,i)=>{
+        ['ph-start-','ph-end-','ph-reason-'].forEach(p=>{ const el = document.getElementById(p+i); if(el) el.addEventListener('change', ()=>updatePhaseFromInputs(i)); });
+      });
+    }
+    function addPhaseRow(prefill){ state.phaseLog.push({start:prefill?.start||'', end:prefill?.end||'', reason:prefill?.reason||PHASE_REASONS[0]}); renderPhaseTable(); scheduleSave(); }
+    function deletePhase(i){ state.phaseLog.splice(i,1); renderPhaseTable(); scheduleSave(); }
+    function updatePhaseFromInputs(i){ const s = $('#ph-start-'+i)?.value||''; const e=$('#ph-end-'+i)?.value||''; const r=$('#ph-reason-'+i)?.value||PHASE_REASONS[0]; state.phaseLog[i]={start:s,end:e,reason:r}; const dEl=$('#ph-dur-'+i); if(dEl) dEl.textContent = formatPhaseDuration(s,e); scheduleSave(); }
+    function parseHM(v){ const m=String(v||'').match(/^([01]?\d|2[0-3]):([0-5]\d)$/); if(!m) return null; return parseInt(m[1],10)*60 + parseInt(m[2],10); }
+    function formatPhaseDuration(start,end){ const a=parseHM(start), b=parseHM(end); if(a==null || b==null) return '0:00'; let d=b-a; if(d<0) d+=24*60; const h=Math.floor(d/60), m=d%60; return `${h}:${String(m).padStart(2,'0')}`; }
+
+    // ===== Map init =====
+    async function bootstrap(){
+      try{ await ensureDeps(); const ua = navigator.userAgent||''; const inApp=/(WhatsApp|FBAN|FBAV|Instagram|Line\/[0-9]|Twitter|WeChat|Weibo)/i.test(ua); const banner=$('#inappBanner'); if(banner) banner.style.display=inApp?'block':'none'; initMap(); if($('#dateInput') && !$('#dateInput').value) $('#dateInput').value = todayISO(); restoreFromSaved(); scheduleSave(); }
+      catch(e){ console.error(e); const banner=$('#inappBanner'); if(banner) banner.style.display='block'; showToast('Map libraries were blocked. Use “Open in Chrome/Safari”.'); }
+    }
+    function initMap(){ const m=L.map('map',{center:[13.5,104.5],zoom:5,worldCopyJump:true}); const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}); const esri=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'&copy; Esri, Maxar, Earthstar Geographics'}); esri.on('tileerror',()=>{ if(!m.hasLayer(osm)){ osm.addTo(m); showToast("Couldn't load satellite tiles. Falling back to OSM."); } }); esri.addTo(m); L.control.layers({Satellite:esri,OSM:osm},{ }).addTo(m); state.map=m; state.groupLayer=L.layerGroup().addTo(m); setTimeout(()=>m.invalidateSize(),60); window.addEventListener('resize',()=>m.invalidateSize()); }
+
+    // ===== UI setup =====
+    window.addEventListener('load', ()=>{ const di=$('#dateInput'); if(di) di.value=todayISO(); fillSkipReasons(); renderPhaseTable(); restoreFromSaved(); });
+    $('#selSkip').addEventListener('change', (e)=>{ const on=e.target.checked; $('#selReason').disabled=!on; if(on) fillSkipReasons(); if(!on) $('#selReason').value=''; });
+    $('#showNormal').addEventListener('change', e=>{ state.showNormal=e.target.checked; render(); });
+    $('#showJump').addEventListener('change', e=>{ state.showJump=e.target.checked; render(); });
+    $('#showSkip').addEventListener('change', e=>{ state.showSkip=e.target.checked; render(); });
+
+    // ===== Parsing helpers for KMZ/KML =====
+    function parseLinePointFromName(name=''){ const s=String(name); let m=s.match(/\bL(?:ine)?\s*([A-Za-z0-9]+)[^0-9A-Za-z]+P(?:oint|t)?\s*([A-Za-z0-9]+)/i); if(m) return {line:m[1],point:m[2]}; m=s.match(/\bLine\s*([A-Za-z0-9]+).*?Point\s*([A-Za-z0-9]+)/i); if(m) return {line:m[1],point:m[2]}; m=s.match(/\bL\s*([0-9A-Za-z]+)[\-_ ]+P\s*([0-9A-Za-z]+)/i); if(m) return {line:m[1],point:m[2]}; m=s.match(/([A-Za-z0-9]+)[\-_ ]+(\d{1,4})$/); if(m) return {line:m[1],point:m[2]}; return {line:'',point:''}; }
+    function getPropCI(props,names){ if(!props) return undefined; const keys=Object.keys(props); for(const n of names){ const k=keys.find(k=>k.toLowerCase()===String(n).toLowerCase()); if(k) return props[k]; } }
+    function normalizeLonLat(lon,lat){
+  // KML coordinates are lon,lat (WGS84). Some non‑standard exports may swap them.
+  const L=parseFloat(lon), A=parseFloat(lat);
+  if(Number.isNaN(L)||Number.isNaN(A)) return null;
+  // Try standard lon,lat first
+  if(isValidLonLat(L,A)) return {lng:L,lat:A};
+  // If invalid, try swapped
+  if(isValidLonLat(A,L)) return {lng:A,lat:L};
+  return null;
+}
+function isValidLonLat(lng,lat){
+  return Number.isFinite(lng) && Number.isFinite(lat) && Math.abs(lat)<=90 && Math.abs(lng)<=180;
+}
+
+
+
+function displayKey(p){
+  if(!p) return '';
+  const s=String(p.station||'').trim();
+  if(s) return s;
+  const l=String(p.line||'').trim();
+  const pt=String(p.point||'').trim();
+  if(l || pt) return `${l||'—'}-${pt||'—'}`;
+  return String(p.uid||p.id||'');
+}
+function defineBuiltInProjections(){
+  if(!window.proj4) return;
+  // Define common projections if not already present
+  if(!proj4.defs['EPSG:3857']){
+    proj4.defs('EPSG:3857', '+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +wktext +no_defs');
+  }
+  // Frequently-seen national/regional CRSs
+  if(!proj4.defs['EPSG:3035']){
+    proj4.defs('EPSG:3035', '+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs');
+  }
+  if(!proj4.defs['EPSG:2154']){
+    proj4.defs('EPSG:2154', '+proj=lcc +lat_1=49 +lat_2=44 +lat_0=46.5 +lon_0=3 +x_0=700000 +y_0=6600000 +ellps=GRS80 +units=m +no_defs');
+  }
+  if(!proj4.defs['EPSG:27700']){
+    proj4.defs('EPSG:27700', '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +units=m +no_defs');
+  }
+  if(!proj4.defs['EPSG:2193']){
+    proj4.defs('EPSG:2193', '+proj=tmerc +lat_0=0 +lon_0=173 +k=0.9996 +x_0=1600000 +y_0=10000000 +ellps=GRS80 +units=m +no_defs');
+  }
+  if(!proj4.defs['EPSG:3413']){
+    proj4.defs('EPSG:3413', '+proj=stere +lat_0=90 +lat_ts=70 +lon_0=-45 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs');
+  }
+  if(!proj4.defs['EPSG:3577']){
+    proj4.defs('EPSG:3577', '+proj=aea +lat_1=-18 +lat_2=-36 +lat_0=0 +lon_0=132 +x_0=0 +y_0=0 +datum=GDA94 +units=m +no_defs');
+  }
+}
+
+function looksLikeWebMercatorMeters(x,y){
+  const X=Math.abs(parseFloat(x)), Y=Math.abs(parseFloat(y));
+  return Number.isFinite(X)&&Number.isFinite(Y) && X<=20037508.35 && Y<=20048966.10 && (X>1000 || Y>1000);
+}
+function looksLikeUTMMeters(x,y){
+  const X=Math.abs(parseFloat(x)), Y=Math.abs(parseFloat(y));
+  return Number.isFinite(X)&&Number.isFinite(Y) && X>=100000 && X<=900000 && Y>=0 && Y<=11000000;
+}
+
+function defineUTM(zone, hemi){
+  const key = `UTM:${zone}${hemi}`;
+  if(proj4.defs[key]) return key;
+  const south = (hemi==='S') ? ' +south' : '';
+  proj4.defs(key, `+proj=utm +zone=${zone} +datum=WGS84 +units=m +no_defs${south}`);
+  return key;
+}
+
+async function ensureProj(code){
+  if(!code) return false;
+  let c=String(code).trim();
+  if(!/^EPSG:/i.test(c) && !/^UTM:/i.test(c)) c='EPSG:'+c;
+  if(c.toUpperCase()==='EPSG:4326') return 'EPSG:4326';
+  defineBuiltInProjections();
+  if(/^UTM:/i.test(c)) return c; // already defined by defineUTM
+  if(!proj4.defs[c]){
+    const id=c.split(':')[1];
+    // Try epsg.io for uncommon CRS
+    const res=await fetch(`https://epsg.io/${id}.proj4`);
+    if(!res.ok) throw new Error('Unknown EPSG');
+    const def=(await res.text()).trim();
+    if(!def) throw new Error('Empty EPSG');
+    proj4.defs(c,def);
+  }
+  return c;
+}
+
+function scoreProjection(sampleXY, code){
+  let minLon=Infinity, minLat=Infinity, maxLon=-Infinity, maxLat=-Infinity;
+  let valid=0;
+  for(const [x,y] of sampleXY){
+    try{
+      const out = proj4(code,'EPSG:4326',[x,y]);
+      const lon=out[0], lat=out[1];
+      if(!isValidLonLat(lon,lat)) continue;
+      if(lat<-85 || lat>85) continue;
+      valid++;
+      if(lon<minLon) minLon=lon;
+      if(lon>maxLon) maxLon=lon;
+      if(lat<minLat) minLat=lat;
+      if(lat>maxLat) maxLat=lat;
+    }catch(e){}
+  }
+  if(valid===0) return null;
+  const dLon = Math.max(0.000001, maxLon-minLon);
+  const dLat = Math.max(0.000001, maxLat-minLat);
+  const area = dLon*dLat;
+  return {valid, area, bbox:[minLon,minLat,maxLon,maxLat]};
+}
+
+async function inferBestCRS(points){
+  const rawPts = points.filter(p=>!isValidLonLat(p.lng,p.lat) && Number.isFinite(p.rawX) && Number.isFinite(p.rawY));
+  if(!rawPts.length) return null;
+
+  defineBuiltInProjections();
+
+  const sample = rawPts.slice(0, Math.min(25, rawPts.length)).map(p=>[p.rawX, p.rawY]);
+  const minValid = Math.max(5, Math.ceil(sample.length*0.8));
+
+  const candidates = [];
+
+  if(sample.every(([x,y])=>looksLikeWebMercatorMeters(x,y))) candidates.push('EPSG:3857');
+
+  candidates.push('EPSG:3035','EPSG:2154','EPSG:27700','EPSG:2193','EPSG:3413','EPSG:3577');
+
+  if(sample.some(([x,y])=>looksLikeUTMMeters(x,y))){
+    for(let z=1; z<=60; z++){
+      candidates.push(defineUTM(z,'N'));
+      candidates.push(defineUTM(z,'S'));
+    }
+  }
+
+  const uniq = [];
+  const seen = new Set();
+  for(const c of candidates){ if(!seen.has(c)){ uniq.push(c); seen.add(c);} }
+
+  let best=null;
+  for(const cand of uniq){
+    try{
+      const code = await ensureProj(cand);
+      const s = scoreProjection(sample, code);
+      if(!s || s.valid < minValid) continue;
+      const score = (s.valid*1000) - (Math.log10(s.area+1e-12)*50);
+      if(!best || score>best.score){
+        best = {code, score, valid:s.valid, area:s.area, bbox:s.bbox};
+      }
+    }catch(e){}
+  }
+  return best;
+}
+
+async function autoFixAllPoints(points){
+  const bad = points.filter(p=>!isValidLonLat(p.lng,p.lat) && Number.isFinite(p.rawX) && Number.isFinite(p.rawY));
+  if(!bad.length) return;
+
+  const best = await inferBestCRS(points);
+  if(!best){
+    showToast('Could not infer CRS automatically. The KMZ/KML might have invalid coordinates.');
+    return;
+  }
+
+  const code = best.code;
+  let fixed=0, dropped=0;
+  for(const p of points){
+    if(isValidLonLat(p.lng,p.lat)) continue;
+    try{
+      const out = proj4(code,'EPSG:4326',[p.rawX,p.rawY]);
+      const lon=out[0], lat=out[1];
+      if(!isValidLonLat(lon,lat)) { dropped++; continue; }
+      p.lng = lon; p.lat = lat;
+      p.x = lon; p.y = lat;
+      fixed++;
+    }catch(e){ dropped++; }
+  }
+  showToast(`Auto‑projection: ${code} (fixed ${fixed}, dropped ${dropped}).`);
+}
+
+async function buildPointFromFeature(feat,idx){
+  if(!feat.geometry) return null;
+  const type = feat.geometry.type;
+
+  if(type==='Point'){
+    let [xRaw,yRaw] = feat.geometry.coordinates;
+    xRaw = parseFloat(xRaw); yRaw = parseFloat(yRaw);
+    if(!Number.isFinite(xRaw) || !Number.isFinite(yRaw)) return null;
+
+    const props=feat.properties||{};
+    const nm=props.name||'';
+
+    let line=getPropCI(props,['line','ligne','Line','LINE'])||'';
+    let point=getPropCI(props,['point','pt','numero','numéro','Point','POINT'])||'';
+    // Station-only datasets (e.g., Denmark) often store the identifier as "station"
+    let station=getPropCI(props,['station','Station','STATION'])||'';
+    if((!line||!point) && !station){
+      const t=parseLinePointFromName(nm||props.description||'');
+      line=line||t.line; point=point||t.point;
+    }
+    // If station exists and name is blank, keep it in sync for display/search
+    station = String(station||nm||'').trim();
+
+    const norm = normalizeLonLat(xRaw,yRaw);
+    const lng = norm?.lng, lat = norm?.lat;
+    const ok = norm ? isValidLonLat(lng,lat) : false;
+
+    const lineS=String(line||'').trim();
+    const pointS=String(point||'').trim();
+    const stationS=String(station||'').trim();
+
+    const uidBase = stationS || ((lineS && pointS) ? `${lineS}-${pointS}` : '');
+    const uid = uidBase || `IDX-${idx}-${xRaw.toFixed(3)}-${yRaw.toFixed(3)}`;
+
+    return {
+      id: idx,
+      uid,
+      line: lineS,
+      point: pointS,
+      station: stationS,
+      rawX: xRaw,
+      rawY: yRaw,
+      lat: ok ? lat : null,
+      lng: ok ? lng : null,
+      x: ok ? lng : null,
+      y: ok ? lat : null,
+      comment:'',
+      skip:false,
+      jump:false,
+      skipReason:'',
+      edited:false
+    };
+  }
+
+  if(type==='MultiPoint'){
+    const out=[];
+    const coords=feat.geometry.coordinates||[];
+    let i=0;
+    for(const c of coords){
+      const p=await buildPointFromFeature({geometry:{type:'Point',coordinates:c},properties:feat.properties}, idx*1000+(i++));
+      if(p) out.push(p);
+    }
+    return out;
+  }
+
+  return null;
+}
+
+function updateCount(){ $('#count').textContent = state.points.length; }
+    function groupByLine(){ const m=new Map(); for(const p of state.points){ const k=(p.line||'').trim(); if(!k) continue; if(!m.has(k)) m.set(k,[]); m.get(k).push(p);} 
+    function escapeHTML(s){ return String(s||'').replace(/[&<>"]+/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]||c)); }
+
+    function refreshLineFilter(){
+      const sel = $('#lineFilter');
+      if(!sel) return;
+      const lines = Array.from(new Set(state.points.map(p=>String(p.line||'')).filter(s=>s))).sort((a,b)=>a.localeCompare(b, undefined, {numeric:true}));
+      const current = sel.value || '';
+      sel.innerHTML = '<option value="">— all —</option>' + lines.map(l=>`<option value="${escapeHTML(l)}">${escapeHTML(l)}</option>`).join('');
+      sel.value = lines.includes(current) ? current : '';
+    }
+
+    function numericPointValue(p){
+      const s = String(p.point||'').trim();
+      const n = parseInt(s,10);
+      return Number.isFinite(n) ? n : null;
+    }
+    function getOrderedLinePoints(line){
+      const arr = state.points.filter(p=>String(p.line||'')===String(line||''));
+      arr.sort((a,b)=>{
+        const na = numericPointValue(a);
+        const nb = numericPointValue(b);
+        if(na!=null && nb!=null) return na-nb;
+        return String(a.point||'').localeCompare(String(b.point||''), undefined, {numeric:true});
+      });
+      return arr;
+    }
+    function updatePrevNext(){
+      const prevBtn = $('#prevBtn');
+      const nextBtn = $('#nextBtn');
+      const p = state.points.find(pp=>pp.id===state.selectedId);
+      if(!prevBtn || !nextBtn){ return; }
+      if(!p || !p.line){
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        return;
+      }
+      const seq = getOrderedLinePoints(p.line);
+      const idx = seq.findIndex(x=>x.id===p.id);
+      prevBtn.disabled = idx<=0;
+      nextBtn.disabled = idx<0 || idx>=seq.length-1;
+    }
+    function goPrevNext(dir){
+      const p = state.points.find(pp=>pp.id===state.selectedId);
+      if(!p || !p.line) return;
+      const seq = getOrderedLinePoints(p.line);
+      const idx = seq.findIndex(x=>x.id===p.id);
+      const j = idx + dir;
+      if(j<0 || j>=seq.length) return;
+      selectPoint(seq[j].id);
+    }
+
+    function applyEditsByUid(edits){
+      if(!edits || !Array.isArray(edits) || !state.points.length) return 0;
+      const map = new Map();
+      edits.forEach(e=>{ if(e && e.uid) map.set(String(e.uid), e); });
+      let applied = 0;
+      state.points.forEach(p=>{
+        const e = map.get(String(p.uid));
+        if(!e) return;
+        p.comment = e.comment||'';
+        p.skip = !!e.skip;
+        p.jump = !!e.jump;
+        p.skipReason = e.skipReason||'';
+        p.edited = true;
+        applied++;
+      });
+      return applied;
+    }
+    function restoreFromSaved(){
+      const saved = loadSavedState();
+      if(!saved) return;
+      // restore meta + phase log immediately
+      setMeta(saved.meta||{});
+      if(Array.isArray(saved.phaseLog)){ state.phaseLog = saved.phaseLog; renderPhaseTable(); }
+      // restore filters
+      state.filterLine = saved.filterLine||'';
+      state.searchText = saved.searchText||'';
+      state.editedOnly = !!saved.editedOnly;
+      if($('#lineFilter')) $('#lineFilter').value = state.filterLine;
+      if($('#searchFilter')) $('#searchFilter').value = state.searchText;
+      if($('#showEditedOnly')) $('#showEditedOnly').checked = state.editedOnly;
+
+      
+      // restore coordinate CRS selection
+
+      // point edits applied after KML load (if points exist now, apply immediately)
+      if(state.points.length){
+        const n = applyEditsByUid(saved.pointEdits||[]);
+        if(n) showToast(`Restored ${n} edited point(s) from last session.`);
+      }
+    }
+for(const [,arr] of m){ arr.sort((a,b)=>(parseInt(a.point)||0)-(parseInt(b.point)||0)); } return m; }
+    function markerStyle(p){
+      let s;
+      if(p.skip) s = {radius:7,color:'#fda4a4',weight:1,fillColor:'#ef4444',fillOpacity:0.95};
+      else if(p.jump) s = {radius:7,color:'#fde68a',weight:1,fillColor:'#facc15',fillOpacity:0.95};
+      else s = {radius:6,color:'#93c5fd',weight:1,fillColor:'#60a5fa',fillOpacity:0.9};
+      if(p.edited){ s.weight = 3; s.color = '#34d399'; }
+      return s;
+    }
+    function visibleByFilter(p){
+      if(!p) return false;
+      // status filters
+      if(p.skip && !state.showSkip) return false;
+      if(p.jump && !state.showJump) return false;
+      if(!p.skip && !p.jump && !state.showNormal) return false;
+
+      // edited-only
+      if(state.editedOnly && !p.edited) return false;
+
+      // line filter
+      if(state.filterLine && String(p.line||'') !== String(state.filterLine)) return false;
+
+      // search filter (line-point / comment)
+      const q = (state.searchText||'').trim().toLowerCase();
+      if(q){
+        const lp = `${p.line||''}-${p.point||''}`.toLowerCase();
+        const st = (p.station||'').toLowerCase();
+        const dk = displayKey(p).toLowerCase();
+        const c = (p.comment||'').toLowerCase();
+        const r = (p.skipReason||'').toLowerCase();
+        if(!(lp.includes(q) || st.includes(q) || dk.includes(q) || c.includes(q) || r.includes(q))) return false;
+      }
+      return true;
+    }
+
+    
+    function safeRender(){
+      // Force a few renders across frames/time to avoid the "nothing until toggle" issue on some browsers.
+      if(!state.groupLayer || !state.map){
+        setTimeout(safeRender, 50);
+        return;
+      }
+      const doIt = ()=>{
+        try{ state.map.invalidateSize(); }catch(e){}
+        try{ render(); }catch(e){ console.error(e); }
+      };
+      doIt();
+      // next animation frame
+      requestAnimationFrame(doIt);
+      // and a bit later (after layout settles)
+      setTimeout(doIt, 120);
+      setTimeout(doIt, 300);
+    }
+
+function render(){ state.groupLayer.clearLayers(); const markers=state.points.filter(visibleByFilter).map(p=>{ const m=L.circleMarker([p.lat,p.lng],markerStyle(p)); if(state.labelsOn){ m.bindTooltip(displayKey(p), {permanent:false,direction:'top',opacity:0.9,sticky:true}); } m.on('click',()=>{ selectPoint(p.id); }); return m; }); markers.forEach(m=>m.addTo(state.groupLayer)); if(state.linesOn){ const byLine=groupByLine(); byLine.forEach(arr=>{ const seq=arr.filter(visibleByFilter); if(seq.length<2) return; const latlngs=seq.map(p=>[p.lat,p.lng]); L.polyline(latlngs,{color:'#22d3ee',weight:2,opacity:0.8}).addTo(state.groupLayer); }); } if(markers.length){ const g=L.featureGroup(markers); if(!state.hasFit){ state.map.fitBounds(g.getBounds().pad(0.2)); state.hasFit=true; } } updateCount(); }
+
+    function selectPoint(id){
+      state.selectedId=id;
+      const p=state.points.find(pp=>pp.id===id);
+      if(!p){ $('#selInfo').value='—'; updatePrevNext(); return; }
+
+      const label = `${displayKey(p)}` + (p.edited ? ' • Edited' : '');
+      $('#selInfo').value = label;
+      $('#selComment').value=p.comment||'';
+      $('#selSkip').checked=!!p.skip;
+      $('#selJump').checked=!!p.jump;
+      $('#selReason').disabled=!p.skip;
+      fillSkipReasons();
+      $('#selReason').value=p.skipReason||'';
+
+      // auto-zoom / pan to selected point
+      if(state.map && p.lat!=null && p.lng!=null){
+        const z = Math.max(state.map.getZoom(), 16);
+        state.map.setView([p.lat,p.lng], z, {animate:true});
+      }
+      updatePrevNext();
+    }
+    function applyEdit(){
+      const id=state.selectedId;
+      if(id==null) return;
+      const p=state.points.find(pp=>pp.id===id);
+      if(!p) return;
+
+      const newComment = ($('#selComment').value||'').trim();
+      const newSkip = $('#selSkip').checked;
+      const newJump = $('#selJump').checked;
+      const newReason = ($('#selReason').value||'').trim();
+
+      if(newSkip && !newReason){
+        showToast('Skip reason is required when a point is skipped.');
+        return;
+      }
+
+      const changed = (p.comment||'')!==newComment || !!p.skip!==!!newSkip || !!p.jump!==!!newJump || (p.skipReason||'')!==newReason;
+
+      p.comment=newComment;
+      p.skip=newSkip;
+      p.jump=newJump;
+      p.skipReason=newSkip ? newReason : (newReason||'');
+      if(changed) p.edited = true;
+
+      render();
+      scheduleSave();
+      selectPoint(id); // refresh label
+    }
+
+    // ===== KML/KMZ loading =====
+    async function loadKMLString(kmlText){ try{ const dom=new DOMParser().parseFromString(kmlText,'text/xml'); const gj=toGeoJSON.kml(dom); const feats=(gj&&gj.features)?gj.features:[]; const pts=[]; for(let i=0;i<feats.length;i++){ const f=feats[i]; const built=await buildPointFromFeature(f,i); if(Array.isArray(built)) built.forEach(b=>b&&pts.push(b)); else if(built) pts.push(built);} await autoFixAllPoints(pts); for(let i=pts.length-1;i>=0;i--){ const p=pts[i]; if(!p || !isValidLonLat(p.lng,p.lat)){ pts.splice(i,1); } } if(!pts.length){ showToast('0 points found. Make sure the KMZ contains <Placemark> with <Point>.'); return; } state.points=pts; state.hasFit=false; refreshLineFilter(); $('#downloadBtn').disabled=false; // restore edits
+        // restoreFromSaved() already called on page load; keep for compatibility
+        restoreFromSaved();
+        // apply pending CSV import if any
+        if(state.pendingImport && state.pendingImport.pointRows){
+          const pr = state.pendingImport.pointRows;
+          const edits = pr.map(r=>{
+            const station=String(r.station||r.Station||r.STATION||'').trim();
+            const line=String(r.line||r.Line||r.LINE||'').trim();
+            const point=String(r.point||r.Point||r.POINT||'').trim();
+            const uid = station || ((line&&point)?`${line}-${point}`:'');
+            return {
+              uid,
+              comment:String(r.comment||r.Comment||'').trim(),
+              skip:String(r.skip||r.Skip||'0')==='1'||String(r.skip||r.Skip||'').toLowerCase()==='true',
+              jump:String(r.jump||r.Jump||'0')==='1'||String(r.jump||r.Jump||'').toLowerCase()==='true',
+              skipReason:String(r.skip_reason||r.skipReason||r['skip reason']||'').trim()
+            };
+          }).filter(e=>e.uid);
+          const n2 = applyEditsByUid(edits);
+          state.pendingImport = null;
+          if(n2) showToast(`Applied ${n2} point edit(s) from imported CSV.`);
+        }
+        } catch(e){ console.error(e); if(!(state.points&&state.points.length)) showToast('KML/KMZ parsing error'); } finally { if(state.points&&state.points.length){ safeRender(); scheduleSave(); } } }
+    async function handleFile(file){ if(!file) return; const name=file.name.toLowerCase(); if(name.endsWith('.kml')){ const text=await file.text(); await loadKMLString(text); return; } if(name.endsWith('.kmz')){ try{ const zip=await JSZip.loadAsync(file); let kmlFile=zip.file(/doc\.kml$/i)[0] || zip.file(/\.kml$/i)[0]; if(!kmlFile){ showToast('Invalid KMZ: no KML found.'); return; } const kmlText=await kmlFile.async('string'); await loadKMLString(kmlText); } catch(e){ console.error(e); showToast('KMZ reading error'); } return; } showToast('Unsupported format. Use .kmz or .kml'); }
+
+    // ===== Export (metadata + points + phase log) =====
+    function downloadCSV(){ if(!state.points.length){ showToast('No points.'); return; } const dateVal=$('#dateInput').value||''; const team=$('#teamInput').value||''; const vibro=$('#vibroInput').value||''; const startP=$('#startProdInput').value||''; const endP=$('#endProdInput').value||''; const first=$('#firstPointInput').value||''; const last=$('#lastPointInput').value||''; const metaHeader=['date','team','vibro_number','start_prod','end_prod','first_point','last_point']; const metaRow=[dateVal,team,vibro,startP,endP,first,last]; const metaCsv=Papa.unparse([metaHeader,metaRow]); const rows=state.points.map(p=>({station:p.station||'',line:p.line||'',point:p.point||'',x:p.x,y:p.y,comment:p.comment||'',skip:p.skip?1:0,jump:p.jump?1:0,skip_reason:p.skipReason||''})); const pointsCsv=Papa.unparse(rows);
+      // phase log
+      const phaseRows = state.phaseLog.filter(r=>parseHM(r.start)!=null && parseHM(r.end)!=null).map(r=>({ 'START': r.start, 'END': r.end, 'Duration (calculation)': formatPhaseDuration(r.start,r.end), 'DESCRIPTION': r.reason }));
+      const phaseCsv = phaseRows.length ? Papa.unparse(phaseRows) : '';
+      const combined = metaCsv + '\n\n' + pointsCsv + (phaseCsv ? '\n\n' + phaseCsv : ''); const blob=new Blob([combined],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='production_report.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000); }
+
+    
+    // ===== Import CSV (metadata + point edits + phase log) =====
+    function splitCsvBlocks(text){
+      const cleaned = String(text||'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+      // Keep blocks separated by one or more blank lines
+      return cleaned.split(/\n\s*\n+/).map(b=>b.trim()).filter(Boolean);
+    }
+    function parseBlockHeader(block){
+      const parsed = Papa.parse(block, {header:true, skipEmptyLines:true});
+      return (parsed && parsed.data) ? parsed.data : [];
+    }
+    function handleImportText(csvText){
+      const blocks = splitCsvBlocks(csvText);
+      if(!blocks.length){ showToast('Empty CSV.'); return; }
+
+      // identify meta block by expected headers
+      let meta=null, pointRows=null, phaseRows=null;
+
+      for(const b of blocks){
+        const data = parseBlockHeader(b);
+        if(!data.length) continue;
+        const cols = Object.keys(data[0]||{}).map(s=>String(s||'').toLowerCase());
+        const hasMeta = cols.includes('date') && cols.includes('team') && cols.includes('vibro_number');
+        const hasPoints = cols.includes('line') && cols.includes('point');
+        const hasPhase = cols.includes('start') && cols.includes('end') && cols.some(c=>c.includes('description'));
+        if(hasMeta && !meta) meta = data[0]||{};
+        else if(hasPoints && !pointRows) pointRows = data;
+        else if(hasPhase && !phaseRows) phaseRows = data;
+      }
+
+      if(meta) setMeta(meta);
+
+      if(Array.isArray(phaseRows)){
+        // normalize phase rows
+        state.phaseLog = phaseRows.map(r=>({
+          start: (r['START']||r['Start']||r['start']||'').trim(),
+          end: (r['END']||r['End']||r['end']||'').trim(),
+          reason: (r['DESCRIPTION']||r['Description']||r['description']||r['REASON']||r['Reason']||'').trim() || PHASE_REASONS[0]
+        })).filter(r=>r.start || r.end || r.reason);
+        renderPhaseTable();
+      }
+
+      // if points not loaded yet, store pending import
+      if(!state.points.length){
+        state.pendingImport = { meta, pointRows, phaseRows };
+        scheduleSave();
+        showToast('CSV imported. Now load your KMZ/KML to apply point edits.');
+        return;
+      }
+
+      const edits = (pointRows||[]).map(r=>{
+        const line = String(r.line||r.Line||r.LINE||'').trim();
+        const point = String(r.point||r.Point||r.POINT||'').trim();
+        // uid strategy consistent with buildPointFromFeature
+        const uid = (line && point) ? `${line}-${point}` : '';
+        return {
+          uid,
+          comment: String(r.comment||r.Comment||'').trim(),
+          skip: String(r.skip||r.Skip||'0')==='1' || String(r.skip||r.Skip||'').toLowerCase()==='true',
+          jump: String(r.jump||r.Jump||'0')==='1' || String(r.jump||r.Jump||'').toLowerCase()==='true',
+          skipReason: String(r.skip_reason||r.skipReason||r['skip reason']||'').trim()
+        };
+      }).filter(e=>e.uid);
+
+      const n = applyEditsByUid(edits);
+      render();
+      scheduleSave();
+      showToast(n ? `Applied ${n} point edit(s) from CSV.` : 'CSV imported (no matching points found).');
+    }
+// ===== Wire up =====
+    $('#fileInput').addEventListener('change',(e)=> handleFile(e.target.files[0]));
+    const drop=$('#drop'); drop.addEventListener('dragover',(e)=>{ e.preventDefault(); drop.style.borderColor='#34d399';}); drop.addEventListener('dragleave',()=>{ drop.style.borderColor='#2a3a73';}); drop.addEventListener('drop',(e)=>{ e.preventDefault(); drop.style.borderColor='#2a3a73'; const f=e.dataTransfer.files[0]; handleFile(f);});
+    $('#fitBtn').addEventListener('click',()=>{ if(!state.points.length) return; const g=L.featureGroup(state.points.map(p=>L.marker([p.lat,p.lng]))); state.map.fitBounds(g.getBounds().pad(0.2)); });
+    $('#clearBtn').addEventListener('click',()=>{ state.points=[]; state.selectedId=null; state.phaseLog=[]; renderPhaseTable(); state.groupLayer.clearLayers(); updateCount(); $('#downloadBtn').disabled=true; state.hasFit=false; refreshLineFilter(); clearSavedState(); showToast('Cleared data + local autosave.'); });
+    $('#applyEdit').addEventListener('click', applyEdit);
+    $('#toggleLabels').addEventListener('change',(e)=>{ state.labelsOn=e.target.checked; render(); });
+    $('#toggleLines').addEventListener('change',(e)=>{ state.linesOn=e.target.checked; render(); });
+
+    // Filters
+    $('#lineFilter').addEventListener('change',(e)=>{ state.filterLine = e.target.value||''; safeRender(); scheduleSave(); updatePrevNext(); });
+    $('#searchFilter').addEventListener('input',(e)=>{ state.searchText = e.target.value||''; safeRender(); scheduleSave(); });
+    $('#showEditedOnly').addEventListener('change',(e)=>{ state.editedOnly = e.target.checked; safeRender(); scheduleSave(); });
+
+    // Prev/Next navigation
+    $('#prevBtn').addEventListener('click', ()=>goPrevNext(-1));
+    $('#nextBtn').addEventListener('click', ()=>goPrevNext(1));
+
+    // Import
+    $('#importBtn').addEventListener('click', ()=>$('#importInput').click());
+    $('#importInput').addEventListener('change', async (e)=>{ const f=e.target.files[0]; if(!f) return; const txt=await f.text(); handleImportText(txt); e.target.value=''; });
+
+    // Autosave on meta changes
+    ['dateInput','teamInput','vibroInput','startProdInput','endProdInput','firstPointInput','lastPointInput'].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el) el.addEventListener('change', scheduleSave);
+      if(el) el.addEventListener('input', scheduleSave);
+    });
+
+    // Skip reason enable/disable
+    $('#selSkip').addEventListener('change', (e)=>{ $('#selReason').disabled = !e.target.checked; if(!e.target.checked) $('#selReason').value=''; scheduleSave(); });
+
+    $('#downloadBtn').addEventListener('click', downloadCSV);
+    $('#addPhase').addEventListener('click', ()=>{ const last = state.phaseLog[state.phaseLog.length-1]; addPhaseRow(last? {start:last.end||'', reason:last.reason}:{}); });
+    $('#clearPhase').addEventListener('click', ()=>{ state.phaseLog=[]; renderPhaseTable(); scheduleSave(); });
+
+    // Kick off
+    bootstrap();
+
+    // ===== Runtime tests (open console) =====
+    (function runTests(){
+      try{
+        console.assert(markerStyle({skip:true}).fillColor === '#ef4444', 'skip => red');
+        console.assert(markerStyle({jump:true}).fillColor === '#facc15', 'jump => yellow');
+        console.assert(markerStyle({}).fillColor === '#60a5fa', 'default => blue');
+        console.assert(markerStyle({skip:true,jump:true}).fillColor === '#ef4444', 'skip priority');
+        console.assert(parseLinePointFromName('L12-P034').line==='12' && parseLinePointFromName('L12-P034').point==='034', 'parse Lxx-Pxxx');
+        console.assert(formatPhaseDuration('06:15','06:22')==='0:07','phase duration 7m');
+        console.assert(formatPhaseDuration('23:50','00:10')==='0:20','phase duration across midnight');
+        console.log('[Production Report] tests passed');
+      }catch(e){ console.error('[Production Report] tests failed', e); }
+    })();
+</script>
+</body>
+</html>
