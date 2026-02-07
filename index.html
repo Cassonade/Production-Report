@@ -153,6 +153,8 @@
           <select id="selReason" disabled></select>
 
           <button id="applyEdit" class="primary">Apply changes</button>
+		  <button id="clearSel" class="ghost">Clear selection</button>
+
 
         </div>
       </div>
@@ -237,6 +239,8 @@
   </script>
 
   <script>
+
+
     // ===== Helpers & state =====
     /*
       GLOBAL HELPERS
@@ -318,7 +322,7 @@
 
     function fillSkipReasons(){ const sel = document.querySelector('#selReason'); if(!sel) return; if(!sel.options || sel.options.length <= 1){ sel.innerHTML = '<option value="">— choose —</option>' + SKIP_REASONS.map(r=>`<option>${r}</option>`).join(''); } }
 
-    const state = { points: [], selectedId: null, map:null, groupLayer:null, labelsOn:true, linesOn:true, showNormal:true, showJump:true, showSkip:true, phaseLog: [], hasFit:false, filterLine:"", searchText:"", editedOnly:false, pendingImport:null };
+    const state = { points: [], selectedIds: new Set(), selectedId: null, map:null, groupLayer:null, labelsOn:true, linesOn:true, showNormal:true, showJump:true, showSkip:true, phaseLog: [], hasFit:false, filterLine:"", searchText:"", editedOnly:false, pendingImport:null };
 
     // ===== Phase helpers =====
     /*
@@ -729,11 +733,20 @@ function updateCount(){ $('#count').textContent = state.points.length; }
     }
 for(const [,arr] of m){ arr.sort((a,b)=>(parseInt(a.point)||0)-(parseInt(b.point)||0)); } return m; }
     function markerStyle(p){
-      let s;
+      var s;
       if(p.skip) s = {radius:7,color:'#fda4a4',weight:1,fillColor:'#ef4444',fillOpacity:0.95};
       else if(p.jump) s = {radius:7,color:'#fde68a',weight:1,fillColor:'#facc15',fillOpacity:0.95};
       else s = {radius:6,color:'#93c5fd',weight:1,fillColor:'#60a5fa',fillOpacity:0.9};
+
+      // edited outline (green)
       if(p.edited){ s.weight = 3; s.color = '#34d399'; }
+
+      // selected outline (yellow) - priority over edited
+      if(state.selectedIds && state.selectedIds.has(p.id)){
+        s.color = '#facc15';
+        s.weight = 4;
+        s.fillOpacity = 1;
+      }
       return s;
     }
     function visibleByFilter(p){
@@ -792,57 +805,148 @@ for(const [,arr] of m){ arr.sort((a,b)=>(parseInt(a.point)||0)-(parseInt(b.point
       - lines toggle
       It clears the layer group and rebuilds it.
     */
-    function render(){ state.groupLayer.clearLayers(); const markers=state.points.filter(visibleByFilter).map(p=>{ const m=L.circleMarker([p.lat,p.lng],markerStyle(p)); if(state.labelsOn){ m.bindTooltip(displayKey(p), {permanent:false,direction:'top',opacity:0.9,sticky:true}); } m.on('click',()=>{ selectPoint(p.id); }); return m; }); markers.forEach(m=>m.addTo(state.groupLayer)); if(state.linesOn){ const byLine=groupByLine(); byLine.forEach(arr=>{ const seq=arr.filter(visibleByFilter); if(seq.length<2) return; const latlngs=seq.map(p=>[p.lat,p.lng]); L.polyline(latlngs,{color:'#22d3ee',weight:2,opacity:0.8}).addTo(state.groupLayer); }); } if(markers.length){ const g=L.featureGroup(markers); if(!state.hasFit){ state.map.fitBounds(g.getBounds().pad(0.2)); state.hasFit=true; } } updateCount(); }
+	
+	let isRendering = false;
+	
+    function render(){
+      if(isRendering) return;
+      isRendering = true;
+      try{
+        if(!state.groupLayer) return;
+        state.groupLayer.clearLayers();
 
-    function selectPoint(id){
-      state.selectedId=id;
-      const p=state.points.find(pp=>pp.id===id);
-      if(!p){ $('#selInfo').value='—'; updatePrevNext(); return; }
+        var markers = state.points.filter(visibleByFilter).map(function(p){
+          if(!p || p.lat==null || p.lng==null) return null;
+          var m = L.circleMarker([p.lat, p.lng], markerStyle(p));
+          if(state.labelsOn){
+            m.bindTooltip(displayKey(p), {permanent:false,direction:'top',opacity:0.9,sticky:true});
+          }
+          m.on('click', function(){ toggleSelectPoints(p.id); });
+          return m;
+        }).filter(Boolean);
 
-      const label = `${displayKey(p)}` + (p.edited ? ' • Edited' : '');
-      $('#selInfo').value = label;
-      $('#selComment').value=p.comment||'';
-      $('#selSkip').checked=!!p.skip;
-      $('#selJump').checked=!!p.jump;
-      $('#selReason').disabled=!p.skip;
-      fillSkipReasons();
-      $('#selReason').value=p.skipReason||'';
+        markers.forEach(function(m){ m.addTo(state.groupLayer); });
 
-      // auto-zoom / pan to selected point
-      if(state.map && p.lat!=null && p.lng!=null){
-        const z = Math.max(state.map.getZoom(), 16);
-        state.map.setView([p.lat,p.lng], z, {animate:true});
+        if(state.linesOn){
+          var byLine = groupByLine();
+          byLine.forEach(function(arr){
+            var seq = arr.filter(visibleByFilter).filter(function(p){ return p && p.lat!=null && p.lng!=null; });
+            if(seq.length < 2) return;
+            var latlngs = seq.map(function(p){ return [p.lat, p.lng]; });
+            L.polyline(latlngs, {color:'#22d3ee',weight:2,opacity:0.8}).addTo(state.groupLayer);
+          });
+        }
+
+        if(markers.length){
+          var g = L.featureGroup(markers);
+          if(!state.hasFit){
+            state.map.fitBounds(g.getBounds().pad(0.2));
+            state.hasFit = true;
+          }
+        }
+
+        updateCount();
+      } finally {
+        isRendering = false;
       }
-      updatePrevNext();
     }
-    function applyEdit(){
-      const id=state.selectedId;
-      if(id==null) return;
-      const p=state.points.find(pp=>pp.id===id);
-      if(!p) return;
 
-      const newComment = ($('#selComment').value||'').trim();
-      const newSkip = $('#selSkip').checked;
-      const newJump = $('#selJump').checked;
-      const newReason = ($('#selReason').value||'').trim();
+    function toggleSelectPoints(id){
+	  const p = state.points.find(pp => pp.id === id);
+	  if(!p) return;
 
-      if(newSkip && !newReason){
-        showToast('Skip reason is required when a point is skipped.');
-        return;
-      }
+	  // Toggle dans le Set
+	  if(state.selectedIds.has(id)) state.selectedIds.delete(id);
+	  else state.selectedIds.add(id);
 
-      const changed = (p.comment||'')!==newComment || !!p.skip!==!!newSkip || !!p.jump!==!!newJump || (p.skipReason||'')!==newReason;
+	  // Le dernier tapé devient le point “actif”
+	  state.selectedId = id;
 
-      p.comment=newComment;
-      p.skip=newSkip;
-      p.jump=newJump;
-      p.skipReason=newSkip ? newReason : (newReason||'');
-      if(changed) p.edited = true;
+	  // Met à jour le panneau (formulaire) avec le point actif
+	  updateSelectedPanel();
 
-      render();
-      scheduleSave();
-      selectPoint(id); // refresh label
-    }
+	  // Re-render pour afficher l’anneau jaune
+	  render();
+
+	  // Nav prev/next si tu l’utilises encore
+	  if(typeof updatePrevNext==='function') updatePrevNext();
+	}
+		
+	function updateSelectedPanel(){
+	  const id = state.selectedId;
+	  const p = state.points.find(pp => pp.id === id);
+
+	  if(!p){
+		$('#selInfo').value='—';
+		return;
+	  }
+
+	  const nSel = state.selectedIds ? state.selectedIds.size : 0;
+	  $('#selInfo').value = `${displayKey(p)}${p.edited ? ' • Edited' : ''}${nSel>1 ? ` • ${nSel} selected` : ''}`;
+
+	  $('#selComment').value = p.comment || '';
+	  $('#selSkip').checked = !!p.skip;
+	  $('#selJump').checked = !!p.jump;
+
+	  $('#selReason').disabled = !p.skip;
+	  fillSkipReasons();
+	  $('#selReason').value = p.skipReason || '';
+	}
+
+
+	function applyEdit(){
+	  const ids = (state.selectedIds && state.selectedIds.size)
+		? Array.from(state.selectedIds)
+		: (state.selectedId != null ? [state.selectedId] : []);
+
+	  if(!ids.length){
+		showToast('No selected point.');
+		return;
+	  }
+
+	  const newComment = ($('#selComment').value||'').trim();
+	  const newSkip = $('#selSkip').checked;
+	  const newJump = $('#selJump').checked;
+	  const newReason = ($('#selReason').value||'').trim();
+
+	  if(newSkip && !newReason){
+		showToast('Skip reason is required when a point is skipped.');
+		return;
+	  }
+
+	  let changedCount = 0;
+
+	  for(const id of ids){
+		const p = state.points.find(pp=>pp.id===id);
+		if(!p) continue;
+
+		const changed =
+		  (p.comment||'')!==newComment ||
+		  !!p.skip!==!!newSkip ||
+		  !!p.jump!==!!newJump ||
+		  (p.skipReason||'')!==newReason;
+
+		p.comment = newComment;
+		p.skip = newSkip;
+		p.jump = newJump;
+		p.skipReason = newSkip ? newReason : (newReason||'');
+
+		if(changed){
+		  p.edited = true;
+		  changedCount++;
+		}
+	  }
+
+	  render();
+	  scheduleSave();
+	  // Auto-clear selection after applying changes
+	  state.selectedIds.clear();
+	  state.selectedId = null;
+	  updateSelectedPanel();
+	  render();
+	  showToast(`Applied to ${ids.length} point(s).`);
+	}
+
 
     // ===== KML/KMZ loading =====
     /*
@@ -1048,6 +1152,12 @@ function downloadCSV(){
     $('#fitBtn').addEventListener('click',()=>{ if(!state.points.length) return; const g=L.featureGroup(state.points.map(p=>L.marker([p.lat,p.lng]))); state.map.fitBounds(g.getBounds().pad(0.2)); });
     $('#clearBtn').addEventListener('click',()=>{ state.points=[]; state.selectedId=null; state.phaseLog=[]; renderPhaseTable(); state.groupLayer.clearLayers(); updateCount(); $('#downloadBtn').disabled=true; state.hasFit=false; refreshLineFilter(); clearSavedState(); showToast('Cleared data + local autosave.'); });
     $('#applyEdit').addEventListener('click', applyEdit);
+	$('#clearSel').addEventListener('click', ()=>{
+	  state.selectedIds.clear();
+	  state.selectedId = null;
+	  updateSelectedPanel();
+	  render();
+	});
     $('#toggleLabels').addEventListener('change',(e)=>{ state.labelsOn=e.target.checked; render(); });
     $('#toggleLines').addEventListener('change',(e)=>{ state.linesOn=e.target.checked; render(); });
 
@@ -1097,6 +1207,8 @@ function downloadCSV(){
         console.log('[Production Report] tests passed');
       }catch(e){ console.error('[Production Report] tests failed', e); }
     })();
+
+
 </script>
 </body>
 </html>

@@ -2,7 +2,7 @@
    - Caches the app shell for offline use
    - Does NOT cache map tiles (they're huge)
 */
-const CACHE_NAME = 'prod-report-20260206181436';
+const CACHE_NAME = 'prod-report-20260207092721';
 const APP_SHELL = [
   './',
   './index.html',
@@ -29,7 +29,9 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
 
   if (req.method !== 'GET') return;
-  if (url.origin !== self.location.origin) return; // only same-origin
+
+  // Same-origin only: cache your app files, not external CDNs or map tiles.
+  if (url.origin !== self.location.origin) return;
 
   event.respondWith((async () => {
     const cached = await caches.match(req);
