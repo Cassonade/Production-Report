@@ -4,7 +4,7 @@
    - Does NOT cache external CDNs (Leaflet/JSZip/etc.) or map tiles
    Tip: bump CACHE_NAME on every release to force clients to update.
 */
-const CACHE_NAME = 'prod-report-20260207130511';
+const CACHE_NAME = 'prod-report-2026-02-07';
 
 const APP_SHELL = [
   './',
