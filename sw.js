@@ -1,8 +1,10 @@
-/* Production Report Service Worker
-   - Caches the app shell for offline use
-   - Does NOT cache map tiles (they're huge)
+/* Production Report Service Worker (GitHub Pages)
+   - Caches the app shell for offline use (index + manifest + icons)
+   - Does NOT cache external CDNs (Leaflet/JSZip/etc.) or map tiles
+   - Bump CACHE_NAME on each release to force updates
 */
-const CACHE_NAME = 'prod-report-20260207092721';
+const CACHE_NAME = 'prod-report-20260207110622';
+
 const APP_SHELL = [
   './',
   './index.html',
@@ -12,14 +14,18 @@ const APP_SHELL = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
+  );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : Promise.resolve())));
+    await Promise.all(
+      keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : Promise.resolve()))
+    );
     await self.clients.claim();
   })());
 });
@@ -28,9 +34,10 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
 
+  // Only cache GET requests
   if (req.method !== 'GET') return;
 
-  // Same-origin only: cache your app files, not external CDNs or map tiles.
+  // Only cache same-origin (your GitHub Pages) resources
   if (url.origin !== self.location.origin) return;
 
   event.respondWith((async () => {
@@ -40,11 +47,13 @@ self.addEventListener('fetch', (event) => {
     try {
       const fresh = await fetch(req);
       const cache = await caches.open(CACHE_NAME);
+      // Cache only basic, successful responses
       if (fresh && fresh.status === 200 && fresh.type === 'basic') {
         cache.put(req, fresh.clone());
       }
       return fresh;
     } catch (e) {
+      // Offline fallback: serve cached index.html for navigations
       if (req.mode === 'navigate') {
         const fallback = await caches.match('./index.html');
         if (fallback) return fallback;

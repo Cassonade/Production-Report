@@ -1060,7 +1060,13 @@ function downloadCSV(){
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'production_report.csv';
+  
+  // Build filename with date + team
+  const datePart = meta.date || todayISO();          // ex: 2026-02-06
+  const teamPart = (meta.team || 'TEAM').replace(/\s+/g, '_'); // pas d'espaces
+  const fileName = `ProductionReport_${datePart}_${teamPart}.csv`;
+  a.download = fileName;
+  
   document.body.appendChild(a);
   a.click();
   a.remove();
