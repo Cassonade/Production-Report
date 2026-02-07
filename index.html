@@ -14,55 +14,328 @@
     - Export a CSV (operator summary)
     - Import a CSV (to restore edits)
   -->
-  <style>
-    :root{ --bg:#0b1020; --panel:#10172a; --muted:#9db2df; --accent:#34d399; --accent2:#22d3ee; --border:#1f2a4d; --text:#e6efff; }
-    html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-    header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:linear-gradient(180deg,#0c1430,rgba(12,20,48,.6));border-bottom:1px solid var(--border)}
-    header h1{font-size:16px;margin:0;font-weight:700}
-    .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;background:#0e1630;border:1px solid var(--border);border-radius:999px;color:#b9c7ea;font-size:12px}
+ <style>
+	/* =========================================================
+	   THEME (colors)
+	   Change these to change the whole look quickly
+	========================================================= */
+	:root{
+	  --bg:      #000000; /* page background */
+	  --panel:   #10172a; /* left panel background */
+	  --muted:   #9db2df; /* labels / secondary text */
+	  --accent:  #34d399; /* green accent */
+	  --accent2: #22d3ee; /* cyan accent */
+	  --border:  #1f2a4d; /* borders */
+	  --text:    #e6efff; /* main text */
+	}
 
-    .main{display:grid;grid-template-columns:380px 1fr;gap:10px;height:calc(100vh - 56px)}
-    .panel{min-width:0;min-height:0;height:100%;overflow:auto;background:var(--panel);border-right:1px solid var(--border);padding:14px}
-    main{position:relative;min-height:0}
-    #map{position:absolute;inset:0}
+	/* =========================================================
+	   BASE
+	========================================================= */
+	html, body{
+	  height: 100%;
+	  margin: 0;
+	  background: var(--bg);
+	  color: var(--text);
+	  font-family: Inter, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+	}
 
-    .sec{border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:12px;background:rgba(14,22,48,.5)}
-    .sec h3{margin:0 0 8px 0;font-size:13px;color:var(--muted);letter-spacing:.3px}
-    .row{display:flex;gap:8px;align-items:center}
-    .col{display:flex;flex-direction:column;gap:8px}
-    label{font-size:12px;color:var(--muted)}
-    input[type="text"], input[type="date"], input[type="time"], select, textarea, button{background:#0e1630;border:1px solid var(--border);color:#e6efff;border-radius:12px;padding:9px 10px;outline:none}
-    select{height:38px}
-    textarea{min-height:90px;resize:vertical}
-    button{cursor:pointer;font-weight:700}
-    button.primary{background:linear-gradient(180deg,#0ea5e9,#6366f1);border:none}
-    button.ghost{background:#0e1630}
-    button:disabled{opacity:.6;cursor:not-allowed}
-    .drop{border:1px dashed #2a3a73;border-radius:14px;padding:12px;background:#0b132c}
-    .hint{font-size:12px;color:#8aa0cf}
+	/* =========================================================
+	   HEADER (top bar)
+	========================================================= */
+	header{
+	  display: flex;
+	  align-items: center;
+	  justify-content: space-between;
 
-    .footerbar{position:absolute;bottom:12px;left:12px;z-index:500;background:rgba(10,16,36,.92);backdrop-filter:blur(6px);border:1px solid var(--border);padding:10px 12px;border-radius:12px;color:#b8c3e6;font-size:12px}
-    .legend{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-    .legend .item{display:inline-flex;align-items:center;gap:6px}
-    .legend .dot{width:10px;height:10px;border-radius:999px;background:#60a5fa;box-shadow:0 0 0 2px rgba(96,165,250,.3)}
+	  padding: 10px 14px;
+	  background: linear-gradient(180deg, #000000, rgba(12,20,48,.6));
+	  border-bottom: 1px solid var(--border);
+	}
 
-    .switch{display:flex;align-items:center;gap:8px}
-    .toast{position:absolute;right:12px;bottom:12px;z-index:600;background:#0b132c;border:1px solid var(--border);padding:10px 12px;border-radius:10px;font-size:12px;color:#c6d4ff;display:none}
+	header h1{
+	  font-size: 16px;
+	  margin: 0;
+	  font-weight: 700;
+	}
 
-    /* phase log table */
-    .phase-header, .phase-row{display:grid;grid-template-columns:110px 110px 1fr 90px 36px;gap:8px;align-items:center}
-    .phase-header{font-size:11px;color:#9db2df;opacity:.9}
-    .phase-row .del{background:#1a244d;border:1px solid #223269;border-radius:10px;height:36px;width:36px}
+	/* Small pill (ex: points counter) */
+	.pill{
+	  display: inline-flex;
+	  align-items: center;
+	  gap: 8px;
 
-    /* Mobile layout */
-    @media (max-width: 900px){
-      .main{grid-template-columns:1fr; grid-template-rows: 48vh 1fr}
-      .panel{height:100%}
-      .phase-header, .phase-row{grid-template-columns:1fr 1fr 1fr 80px 36px}
-    }
-    .inapp-banner{display:none;margin:10px 14px 0 14px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:#0b132c;color:#cdd8ff;font-size:12px}
-    .inapp-banner b{color:#fff}
-  </style>
+	  padding: 6px 10px;
+	  background: #0e1630;
+	  border: 1px solid var(--border);
+	  border-radius: 999px;
+
+	  color: #b9c7ea;
+	  font-size: 12px;
+	}
+
+	/* =========================================================
+	   LAYOUT (panel + map)
+	========================================================= */
+	.main{
+	  display: grid;
+	  grid-template-columns: 380px 1fr;
+	  gap: 10px;
+
+	  height: calc(100vh - 56px);
+	}
+
+	.panel{
+	  min-width: 0;
+	  min-height: 0;
+	  height: 100%;
+
+	  overflow: auto;
+	  background: var(--panel);
+	  border-right: 1px solid var(--border);
+	  padding: 14px;
+	}
+
+	main{
+	  position: relative;
+	  min-height: 0;
+	}
+
+	#map{
+	  position: absolute;
+	  inset: 0;
+	}
+
+	/* =========================================================
+	   SECTIONS (cards in the left panel)
+	========================================================= */
+	.sec{
+	  border: 1px solid var(--border);
+	  border-radius: 14px;
+
+	  padding: 12px;
+	  margin-bottom: 12px;
+
+	  background: rgba(14,22,48,.5);
+	}
+
+	.sec h3{
+	  margin: 0 0 8px 0;
+	  font-size: 13px;
+	  color: var(--muted);
+	  letter-spacing: .3px;
+	}
+
+	/* Layout helpers */
+	.row{
+	  display: flex;
+	  gap: 8px;
+	  align-items: center;
+	}
+
+	.col{
+	  display: flex;
+	  flex-direction: column;
+	  gap: 8px;
+	}
+
+	/* Labels */
+	label{
+	  font-size: 12px;
+	  color: var(--muted);
+	}
+
+	/* =========================================================
+	   FORM CONTROLS
+	   (Inputs / Selects / Textarea / Buttons)
+	========================================================= */
+	input[type="text"],
+	input[type="date"],
+	input[type="time"],
+	select,
+	textarea,
+	button{
+	  background: #0e1630;
+	  border: 1px solid var(--border);
+	  color: #e6efff;
+
+	  border-radius: 12px;
+	  padding: 9px 10px;
+	  outline: none;
+	}
+
+	select{
+	  height: 38px;
+	}
+
+	textarea{
+	  min-height: 90px;
+	  resize: vertical;
+	}
+
+	/* Buttons */
+	button{
+	  cursor: pointer;
+	  font-weight: 700;
+	}
+
+	button.primary{
+	  background: linear-gradient(180deg, #0ea5e9, #6366f1);
+	  border: none;
+	}
+
+	button.ghost{
+	  background: #0e1630;
+	}
+
+	button:disabled{
+	  opacity: .6;
+	  cursor: not-allowed;
+	}
+
+	/* Drop area */
+	.drop{
+	  border: 1px dashed #2a3a73;
+	  border-radius: 14px;
+	  padding: 12px;
+	  background: #0b132c;
+	}
+
+	.hint{
+	  font-size: 12px;
+	  color: #8aa0cf;
+	}
+
+	/* =========================================================
+	   MAP FOOTER (legend) + TOAST
+	========================================================= */
+	.footerbar{
+	  position: absolute;
+	  bottom: 12px;
+	  left: 12px;
+	  z-index: 500;
+
+	  background: rgba(10,16,36,.92);
+	  backdrop-filter: blur(6px);
+
+	  border: 1px solid var(--border);
+	  padding: 10px 12px;
+	  border-radius: 12px;
+
+	  color: #b8c3e6;
+	  font-size: 12px;
+	}
+
+	.legend{
+	  display: flex;
+	  gap: 12px;
+	  align-items: center;
+	  flex-wrap: wrap;
+	}
+
+	.legend .item{
+	  display: inline-flex;
+	  align-items: center;
+	  gap: 6px;
+	}
+
+	.legend .dot{
+	  width: 10px;
+	  height: 10px;
+	  border-radius: 999px;
+	  background: #60a5fa;
+	  box-shadow: 0 0 0 2px rgba(96,165,250,.3);
+	}
+
+	/* Toggle switch container */
+	.switch{
+	  display: flex;
+	  align-items: center;
+	  gap: 8px;
+	}
+
+	/* Toast message (bottom-right) */
+	.toast{
+	  position: absolute;
+	  right: 12px;
+	  bottom: 12px;
+	  z-index: 600;
+
+	  background: #0b132c;
+	  border: 1px solid var(--border);
+	  padding: 10px 12px;
+	  border-radius: 10px;
+
+	  font-size: 12px;
+	  color: #c6d4ff;
+	  display: none;
+	}
+
+	/* =========================================================
+	   PHASE LOG TABLE
+	========================================================= */
+	.phase-header,
+	.phase-row{
+	  display: grid;
+	  grid-template-columns: 110px 110px 1fr 90px 36px;
+	  gap: 8px;
+	  align-items: center;
+	}
+
+	.phase-header{
+	  font-size: 11px;
+	  color: #9db2df;
+	  opacity: .9;
+	}
+
+	.phase-row .del{
+	  background: #1a244d;
+	  border: 1px solid #223269;
+	  border-radius: 10px;
+	  height: 36px;
+	  width: 36px;
+	}
+
+	/* =========================================================
+	   MOBILE LAYOUT
+	========================================================= */
+	@media (max-width: 900px){
+	  .main{
+		grid-template-columns: 1fr;
+		grid-template-rows: 48vh 1fr; /* map height on mobile */
+	  }
+
+	  .panel{
+		height: 100%;
+	  }
+
+	  .phase-header,
+	  .phase-row{
+		grid-template-columns: 1fr 1fr 1fr 80px 36px;
+	  }
+	}
+
+	/* =========================================================
+	   IN-APP BANNER (currently hidden)
+	========================================================= */
+	.inapp-banner{
+	  display: none;
+	  margin: 10px 14px 0 14px;
+
+	  padding: 10px 12px;
+	  border: 1px solid var(--border);
+	  border-radius: 12px;
+
+	  background: #0b132c;
+	  color: #cdd8ff;
+	  font-size: 12px;
+	}
+
+	.inapp-banner b{
+	  color: #fff;
+	}
+</style>
+
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
   <!-- PWA -->
@@ -186,7 +459,7 @@
         </div>
         <label class="switch"><input id="showEditedOnly" type="checkbox" /> Show edited only</label>
 <label class="switch"><input id="toggleLabels" type="checkbox" checked /> Show labels (station / line-point)</label>
-        <label class="switch"><input id="toggleLines" type="checkbox" checked /> Connect points by line</label>
+        <label class="switch"><input id="toggleLines" type="checkbox" /> Connect points by line</label>
         <div class="row" style="gap:14px;flex-wrap:wrap;margin-top:8px">
           <label class="switch"><input id="showNormal" type="checkbox" checked /> Show Normal</label>
           <label class="switch"><input id="showJump" type="checkbox" checked /> Show Jump</label>
@@ -322,7 +595,7 @@
 
     function fillSkipReasons(){ const sel = document.querySelector('#selReason'); if(!sel) return; if(!sel.options || sel.options.length <= 1){ sel.innerHTML = '<option value="">— choose —</option>' + SKIP_REASONS.map(r=>`<option>${r}</option>`).join(''); } }
 
-    const state = { points: [], selectedIds: new Set(), selectedId: null, map:null, groupLayer:null, labelsOn:true, linesOn:true, showNormal:true, showJump:true, showSkip:true, phaseLog: [], hasFit:false, filterLine:"", searchText:"", editedOnly:false, pendingImport:null };
+    const state = { points: [], selectedIds: new Set(), selectedId: null, map:null, groupLayer:null, labelsOn:true, linesOn:false, showNormal:true, showJump:true, showSkip:true, phaseLog: [], hasFit:false, filterLine:"", searchText:"", editedOnly:false, pendingImport:null };
 
     // ===== Phase helpers =====
     /*
